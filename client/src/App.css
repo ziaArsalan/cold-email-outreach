@@ -506,6 +506,14 @@ tbody tr:hover td {
   border-radius: 8px;
   border: 1px solid var(--border);
 }
+.preview-status {
+  margin-bottom: 1.5rem;
+}
+.preview-actions {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+}
 
 /* ── Settings ── */
 .env-table {

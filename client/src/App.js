@@ -93,6 +93,17 @@ export default function App() {
     setPreviewLoading(false)
   }
 
+  const sendEmail = async () => {
+    if (!previewLead) return
+    try {
+      await axios.post(`${API}/send-email`, { lead: previewLead })
+      fetchLeads()
+      fetchStatus()
+    } catch (e) {
+      alert('Failed to send email: ' + e.message)
+    }
+  }
+
   const pending = leads.filter((l) => !l.status).length
   const emailed = leads.filter((l) => l.status === 'Emailed').length
   const failed = leads.filter((l) => l.status === 'Failed').length
@@ -375,6 +386,14 @@ export default function App() {
             )}
             {preview && !previewLoading && (
               <div className='card preview-card'>
+                <div className='preview-status'>
+                  <label>Status</label>
+                  <span
+                    className={`status-badge ${statusColor(previewLead?.status)}`}
+                  >
+                    {previewLead?.status || 'Pending'}
+                  </span>
+                </div>
                 <div className='preview-subject'>
                   <label>
                     Subject
@@ -395,6 +414,13 @@ export default function App() {
                   <label>Email Body</label>
                   <pre>{preview.body}</pre>
                 </div>
+                {previewLead?.status !== 'Emailed' && (
+                  <div className='preview-actions'>
+                    <button className='btn-start' onClick={sendEmail}>
+                      ✉ Send Email
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
