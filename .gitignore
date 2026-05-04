@@ -1,5 +1,5 @@
 node_modules/
 .env
-.env copy
+.env.*
 *.zip
 lead-gen-493305-2e6bd1d043d5.json
