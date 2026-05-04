@@ -46,7 +46,6 @@ router.get('/status', (req, res) => {
 
 // POST /api/preview — return cached email if exists, otherwise generate and save
 router.post('/preview', async (req, res) => {
-  console.log('Preview request for lead:', req.body.lead)
   const { lead } = req.body
   if (!lead)
     return res.status(400).json({ success: false, error: 'Lead data required' })
@@ -181,6 +180,48 @@ router.post('/start', async (req, res) => {
       jobState.finishedAt = new Date().toISOString()
     }
   })()
+})
+
+// POST /api/send-email — send email for a single lead
+router.post('/send-email', async (req, res) => {
+  const { lead } = req.body
+  if (!lead)
+    return res.status(400).json({ success: false, error: 'Lead data required' })
+
+  try {
+    // Get email (cached or generate)
+    let subject, body
+    if (lead.generatedEmail) {
+      ;({ subject, body } = lead.generatedEmail)
+      addLog('info', `Using cached email for ${lead.name}`)
+    } else {
+      addLog('info', `Generating email for ${lead.name}...`)
+      ;({ subject, body } = await generateEmail(lead))
+      // Save to sheet so it is never regenerated
+      await saveGeneratedEmail(lead.rowIndex, { subject, body })
+    }
+
+    // Send email
+    addLog('info', `Sending email to ${lead.email}...`)
+    await sendEmail({ to: lead.email, subject, body })
+
+    // Update sheet status
+    await updateLeadStatus(lead.rowIndex, 'Emailed')
+
+    addLog(
+      'success',
+      `Emailed ${lead.name} at ${lead.email} — Subject: "${subject}"`,
+    )
+
+    res.json({
+      success: true,
+      message: `Email sent to ${lead.email}`,
+      email: { subject, body },
+    })
+  } catch (err) {
+    addLog('error', `Failed to send email to ${lead.email}: ${err.message}`)
+    res.status(500).json({ success: false, error: err.message })
+  }
 })
 
 // POST /api/stop — stop the job (sets flag; graceful stop after current lead)

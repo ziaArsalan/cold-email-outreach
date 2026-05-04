@@ -4,6 +4,20 @@ import './App.css'
 
 const API = 'http://localhost:8080/api'
 
+const EMAIL_SIGNATURE = `
+  
+  Best Regards,
+  Zia Arsalan
+  Software Engr.
+  
+  Founder @ Devtronics
+  
+  +1 312 783 9450
+  zia@devtronics.co
+  https://devtronics.co
+  
+  Sheridan, WY`
+
 const statusColor = (s) => {
   if (!s) return 'status-pending'
   if (s === 'Emailed') return 'status-emailed'
@@ -21,6 +35,8 @@ export default function App() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [tab, setTab] = useState('dashboard')
   const [smtpStatus, setSmtpStatus] = useState(null)
+  const [bulkGenerating, setBulkGenerating] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 })
   const pollRef = useRef(null)
 
   const fetchLeads = async () => {
@@ -102,6 +118,33 @@ export default function App() {
     } catch (e) {
       alert('Failed to send email: ' + e.message)
     }
+  }
+
+  const bulkGenerate = async () => {
+    const leadsToGenerate = leads.filter((l) => !l.generatedEmail)
+    if (leadsToGenerate.length === 0) {
+      alert('All leads already have generated emails!')
+      return
+    }
+
+    setBulkGenerating(true)
+    setBulkProgress({ current: 0, total: leadsToGenerate.length })
+
+    for (let i = 0; i < leadsToGenerate.length; i++) {
+      try {
+        await axios.post(`${API}/preview`, { lead: leadsToGenerate[i] })
+        setBulkProgress({ current: i + 1, total: leadsToGenerate.length })
+      } catch (e) {
+        console.error(
+          `Failed to generate email for ${leadsToGenerate[i].name}:`,
+          e,
+        )
+        setBulkProgress((p) => ({ ...p, current: p.current + 1 }))
+      }
+    }
+
+    setBulkGenerating(false)
+    await fetchLeads()
   }
 
   const pending = leads.filter((l) => !l.status).length
@@ -294,6 +337,20 @@ export default function App() {
               <p>{leads.length} contacts from Google Sheets</p>
             </div>
             <div className='card table-card'>
+              <div className='bulk-actions'>
+                <button
+                  className='btn-start'
+                  onClick={bulkGenerate}
+                  disabled={
+                    bulkGenerating ||
+                    leads.filter((l) => !l.generatedEmail).length === 0
+                  }
+                >
+                  {bulkGenerating
+                    ? `⟳ Generating... (${bulkProgress.current}/${bulkProgress.total})`
+                    : '✦ Bulk Generate Emails'}
+                </button>
+              </div>
               <div className='table-wrapper'>
                 <table>
                   <thead>
@@ -412,15 +469,18 @@ export default function App() {
                 </div>
                 <div className='preview-body'>
                   <label>Email Body</label>
-                  <pre>{preview.body}</pre>
+                  <pre>
+                    {preview.body}
+                    {EMAIL_SIGNATURE}
+                  </pre>
                 </div>
-                {previewLead?.status !== 'Emailed' && (
-                  <div className='preview-actions'>
-                    <button className='btn-start' onClick={sendEmail}>
-                      ✉ Send Email
-                    </button>
-                  </div>
-                )}
+                {/* {previewLead?.status !== 'Emailed' && ( */}
+                <div className='preview-actions'>
+                  <button className='btn-start' onClick={sendEmail}>
+                    ✉ Send Email
+                  </button>
+                </div>
+                {/* )} */}
               </div>
             )}
           </div>

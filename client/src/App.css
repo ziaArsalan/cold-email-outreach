@@ -399,6 +399,12 @@ input[type='number']:disabled {
   overflow-x: auto;
 }
 
+.bulk-actions {
+  margin-bottom: 1rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
