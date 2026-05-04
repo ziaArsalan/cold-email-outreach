@@ -96,3 +96,52 @@ const generateEmail = async (lead) => {
 }
 
 module.exports = { generateEmail }
+
+
+// function parseJSON(){
+//   const content = [
+//     {
+//       type: 'server_tool_use',
+//       id: 'srvtoolu_01A4T5CWzVRSm7iRRnXdGNfU',
+//       name: 'web_search',
+//       input: { query: 'hotmail.com website' }
+//     },
+//     {
+//       type: 'web_search_tool_result',
+//       tool_use_id: 'srvtoolu_01A4T5CWzVRSm7iRRnXdGNfU',
+//       content: [
+//         [Object], [Object],
+//         [Object], [Object],
+//         [Object], [Object],
+//         [Object], [Object],
+//         [Object], [Object]
+//       ],
+//       caller: { type: 'direct' }
+//     },
+//     {
+//       type: 'text',
+//       text: `I need to clarify something important. Based on the search results, hotmail.com is not a business website that I can analyze for issues. Hotmail.com was an email service that was discontinued in 2013 and redirects to Outlook.com (Microsoft's current email service). The recipient "waad_sater" appears to be an email address (@hotmail.com), not a business owner with a website.\n` +
+//         '\n' +
+//         'Since this is an email service provider and not a business with a website that could benefit from loyalty programs or web development services, I cannot complete this task as requested. The email outreach would not be relevant or appropriate for this recipient.\n' +
+//         '\n' +
+//         "If you'd like me to write an outreach email for a different business with an actual website, please provide a business website URL instead."
+//     }
+//   ]
+
+//   const textBlock = content.filter((b) => b.type === 'text').map((b) => b.text)
+//   console.log('Text Block', textBlock)
+//   const jsonStart = textBlock.indexOf('{')
+//   const jsonEnd = textBlock.lastIndexOf('}')
+
+//   if (jsonStart === -1 || jsonEnd === -1) {
+//     throw new Error('No JSON object found in text block')
+//   }
+
+//   // Parse JSON from the text
+//   const jsonString = textBlock.slice(jsonStart, jsonEnd + 1)
+//   const parsed = JSON.parse(jsonString)
+
+//   return parsed
+// }
+
+// console.log(parseJSON())
