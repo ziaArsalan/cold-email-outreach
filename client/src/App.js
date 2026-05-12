@@ -391,7 +391,7 @@ export default function App() {
                           </span>
                         </td>
                         <td>
-                          {!lead.status && (
+                          {!lead.generatedEmail && (
                             <button
                               className='btn-preview'
                               onClick={() => openPreview(lead)}
@@ -399,6 +399,7 @@ export default function App() {
                               {lead.generatedEmail ? '👁 View' : '✦ Generate'}
                             </button>
                           )}
+                          {console.log(lead)}
                           {lead.status && lead.generatedEmail && (
                             <button
                               className='btn-preview'
