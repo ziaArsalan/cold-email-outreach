@@ -60,12 +60,12 @@ router.post('/preview', async (req, res) => {
     }
     // Generate fresh email via AI
     const email = await generateEmail(lead)
-    console.log('EMAIL', email)
+    // console.log('EMAIL', email)
     // Save to sheet column G so it is never regenerated
     await saveGeneratedEmail(lead.rowIndex, email)
     res.json({ success: true, email, cached: false })
   } catch (err) {
-    console.log('Error Message', err.message)
+    console.log('Error Message', err)
     res.status(500).json({ success: false, error: err.message })
   }
 })

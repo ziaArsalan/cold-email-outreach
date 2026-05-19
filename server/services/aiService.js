@@ -2,7 +2,7 @@ const axios = require('axios')
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
 
-const AI_PROMPT = (lead) => `
+const AI_PROMPT_v1 = (lead) => `
 You are an outreach email writer for Devtronics, a full-stack SaaS development agency run by Zia Arsalan.
 
 Devtronics provides:
@@ -38,34 +38,78 @@ Return your response in this EXACT JSON format (no markdown, no extra text):
 }
 `
 
+const AI_PROMPT = (lead) => `
+You are an outreach email writer for Devtronics, a full-stack SaaS development agency run by Zia Arsalan.
+
+Devtronics provides:
+- Custom web and mobile app development
+- LoyalIdeas (loyalideas.com) — a digital rewards card where guests build up and use points to increase repeat visits for F&B and hospitality businesses
+
+Your task:
+1. Visit the website: ${lead.website}
+2. Look for any real issues (broken pages, outdated design, placeholder text, missing content, errors, slow loading, under-construction pages, typos, etc.)
+3. Write a SHORT, personalized, professional outreach email to ${lead.name} at ${lead.business}
+
+Email rules:
+- Start with "Hi ${lead.name},"
+- Briefly compliment something SPECIFIC and REAL about their business (from the website) in a calm, observational tone
+- If you found a website issue, mention it naturally as a helpful observation in ONE sentence
+- If no clear issue is found, skip the website fix and focus purely on the rewards pitch
+- Pitch LoyalIdeas (loyalideas.com) in 1-2 sentences, keep it benefit-focused
+- End with: "Want a quick look? Reply "Yes" and I will send it over."
+- Add a new line: "To opt out from these emails, reply "No"."
+- NO signature (the sender already has one)
+- NO dashes (—) anywhere
+- NO bullet points
+- Keep it under 120 words total
+- Tone: warm, professional, conversational
+
+STRICT SPAM RULES — never use these words anywhere in subject or body:
+- congratulations, winning, perfect, unsubscribe, stop, earn, redeem, collect, free, guarantee, limited, offer, deal, click, buy, purchase, sale, discount, bonus, gift, prize, reward (use "points" instead), spam, cash, money, income, profit
+
+Subject line format:
+"Grow [Business Name] Repeat Visits with a Digital Rewards Card" — add "(+ Website Fix)" only if there is a real issue to mention.
+
+Return your response in this EXACT JSON format (no markdown, no extra text):
+{
+  "subject": "your subject line here",
+  "body": "your email body here"
+}
+`
+
 const generateEmail = async (lead) => {
-  const response = await axios.post(
-    ANTHROPIC_API_URL,
-    {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      tools: [
-        {
-          type: 'web_search_20250305',
-          name: 'web_search',
-        },
-      ],
-      messages: [
-        {
-          role: 'user',
-          content: AI_PROMPT(lead),
-        },
-      ],
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'web-search-2025-03-05',
+  const response = await axios
+    .post(
+      ANTHROPIC_API_URL,
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        tools: [
+          {
+            type: 'web_search_20250305',
+            name: 'web_search',
+          },
+        ],
+        messages: [
+          {
+            role: 'user',
+            content: AI_PROMPT(lead),
+          },
+        ],
       },
-    },
-  )
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'web-search-2025-03-05',
+        },
+      },
+    )
+    .catch((err) => {
+      console.log('AI Error', err)
+      throw err
+    })
 
   // Extract text from response (may contain tool_use blocks)
   const content = response.data.content || []
@@ -74,8 +118,8 @@ const generateEmail = async (lead) => {
   // Get the last text block which contains the JSON (after Claude's reasoning/web search)
   const textBlock = textBlocks[textBlocks.length - 1] || ''
 
-  console.log('Content', content)
-  console.log('Extracted Text Block', textBlock)
+  // console.log('Content', content)
+  // console.log('Extracted Text Block', textBlock)
 
   // Extract JSON by finding the first '{' and last '}'
   const jsonStart = textBlock.indexOf('{')
@@ -96,7 +140,6 @@ const generateEmail = async (lead) => {
 }
 
 module.exports = { generateEmail }
-
 
 // function parseJSON(){
 //   const content = [

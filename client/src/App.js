@@ -4,19 +4,19 @@ import './App.css'
 
 const API = 'http://localhost:8080/api'
 
-const EMAIL_SIGNATURE = `
-  
-  Best Regards,
-  Zia Arsalan
-  Software Engr.
-  
-  Founder @ Devtronics
-  
-  +1 312 783 9450
-  zia@devtronics.co
-  https://devtronics.co
-  
-  Sheridan, WY`
+const EMAIL_SIGNATURE = ``
+
+// Best Regards,
+// Zia Arsalan
+// Software Engr.
+
+// Founder @ Devtronics
+
+// +1 312 783 9450
+// zia@devtronics.co
+// https://devtronics.co
+
+// Sheridan, WY`
 
 const statusColor = (s) => {
   if (!s) return 'status-pending'

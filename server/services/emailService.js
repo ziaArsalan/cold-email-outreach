@@ -15,19 +15,19 @@ const createTransporter = () => {
 const sendEmail = async ({ to, subject, body }) => {
   const transporter = createTransporter()
 
-  const EMAIL_SIGNATURE = `
-  
-  Best Regards,
-  Zia Arsalan
-  Software Engr.
-  
-  Founder @ Devtronics
-  
-  +1 312 783 9450
-  zia@devtronics.co
-  https://devtronics.co
-  
-  Sheridan, WY`
+  const EMAIL_SIGNATURE = ``
+
+  // Best Regards,
+  // Zia Arsalan
+  // Software Engr.
+
+  // Founder @ Devtronics
+
+  // +1 312 783 9450
+  // zia@devtronics.co
+  // https://devtronics.co
+
+  // Sheridan, WY`
 
   const mailOptions = {
     from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
