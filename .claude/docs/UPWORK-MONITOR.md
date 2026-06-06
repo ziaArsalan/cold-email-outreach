@@ -59,9 +59,18 @@ GOOGLE_JOBS_SHEET_ID=          # optional; defaults to GOOGLE_SHEET_ID
 UPWORK_JOBS_TAB=Upwork
 CRON_INTERVAL=*/10 * * * *
 UPWORK_KEYWORDS=GoHighLevel,GHL developer,SaaS development,AI integration developer,loyalty program developer,Next.js developer,React Node.js SaaS,white label SaaS
-UPWORK_SOURCE=fixtures          # fixtures | rss | google  (T-003 adds real sources)
+UPWORK_SOURCE=fixtures          # fixtures | apify  (set to apify for live runs)
+APIFY_API_TOKEN=                # T-003: from apify.com → Settings → Integrations
 ```
 (`ANTHROPIC_API_KEY`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY` already exist.)
+
+## Apify integration (T-003)
+- **Actor:** `neatrat/upwork-job-scraper`
+- **npm:** `apify-client`
+- **Key inputs:** `searchQuery` (one keyword per run), `maxResults` (start with 20–50), `sortBy: newest`
+- **Key outputs:** job URL, title, description, skills, client country, client total spent/rating, applicants count, budget
+- **Cost:** $3.20 / 1,000 jobs; 10 free runs on the free tier — enough for initial testing
+- **Pattern:** `client.actor('neatrat/upwork-job-scraper').call(input)` → poll `run.defaultDatasetId` → `client.dataset(id).listItems()` → normalize to the fetcher interface
 
 ## Suggested module layout (inside server/)
 ```

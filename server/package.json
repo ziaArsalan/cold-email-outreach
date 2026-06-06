@@ -8,14 +8,15 @@
     "monitor:once": "node index.js --once"
   },
   "dependencies": {
+    "apify-client": "^2.23.4",
     "axios": "^1.6.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "googleapis": "^140.0.0",
     "node-cron": "^3.0.3",
-    "nodemailer": "^6.9.7",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^6.9.7"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

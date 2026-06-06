@@ -17,7 +17,8 @@ Durable, machine-independent knowledge for this project. Committed to the repo s
 - **2026-06-06** — Tasks live in a single [tasks.md](tasks.md), prioritized P0 (highest) → P3.
 - **2026-06-06** — Ship strategy: **direct commit to `main`** then `git push`. No PR per task (yet).
 - **2026-06-06** — Approval gates are **ON**: human approves the plan, and approves bug-fixes before they're applied.
-- **2026-06-06** — Upwork job monitor (T-002/T-003) lives **inside `server/`** and **reuses** existing infra: JWT Sheets auth (`sheetsService.js` pattern, not a `credentials.json` keyFile) and the Claude call style in `aiService.js`. Standard Claude model for new work: **`claude-sonnet-4-6`**. Fetch layer is pluggable + fixtures-first; real Upwork source is deferred (public RSS is login-walled). Full spec: [.claude/docs/UPWORK-MONITOR.md](.claude/docs/UPWORK-MONITOR.md).
+- **2026-06-06** — Upwork job monitor (T-002/T-003) lives **inside `server/`** and **reuses** existing infra: JWT Sheets auth (`sheetsService.js` pattern, not a `credentials.json` keyFile) and the Claude call style in `aiService.js`. Standard Claude model for new work: **`claude-sonnet-4-6`**. Real Upwork jobs sourced via **Apify actor `neatrat/upwork-job-scraper`** (`UPWORK_SOURCE=apify`). Full spec: [.claude/docs/UPWORK-MONITOR.md](.claude/docs/UPWORK-MONITOR.md).
+- **2026-06-06** — Apify actor `neatrat/upwork-job-scraper` real output field names (differ from docs): `tags`→skills, `clientLocation`→country, `proposals`→applicants, `clientName`/`clientNameConfidence`→contact, `url`→both url+applyLink (no separate apply-link field). `perPage` minimum is 10 (actor rejects lower). Free tier: 100 results / 10 runs total.
 
 ## Approval automation (grows over time)
 When a class of decision has been approved enough times that it's safe to auto-approve, record the rule here and the workflow will stop asking for it.

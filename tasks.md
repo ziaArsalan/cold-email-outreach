@@ -41,13 +41,15 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] node-cron is wired in `server/index.js` using `CRON_INTERVAL` but does not block the existing server or the `--once` path
   - [x] `server/data/seenJobs.json` and any `credentials.json` are gitignored
 
-## [T-003] Upwork job monitor — wire a real job source
+## [T-003] Upwork job monitor — wire Apify real job source
 
 - priority: P2
-- status: blocked
+- status: done
 - area: server
-- description: Replace the fixtures source with a real Upwork feed behind the same fetcher interface from T-002. BLOCKED until a working source is confirmed — public RSS is login-walled and the Google `site:upwork.com` fallback is CAPTCHA-gated. Unblock once Zia provides a working RSS URL/token, an Upwork API credential, or a 3rd-party jobs API. **Spec:** [.claude/docs/UPWORK-MONITOR.md](.claude/docs/UPWORK-MONITOR.md).
+- description: Replace the fixtures source with real Upwork jobs via the Apify actor `neatrat/upwork-job-scraper` (npm: `apify-client`). Wire it behind the existing `upworkFetch.js` pluggable interface so `UPWORK_SOURCE=apify` activates it. Add `APIFY_API_TOKEN` to env. **Spec:** [.claude/docs/UPWORK-MONITOR.md](.claude/docs/UPWORK-MONITOR.md).
 - acceptance:
-  - [ ] `UPWORK_SOURCE` can select the real source; it returns normalized jobs matching the fetcher interface
-  - [ ] A real keyword search returns at least one live job that flows through dedupe → Claude → sheet
-  - [ ] Failures (rate limit / login wall / empty feed) are caught and logged without crashing the cron loop
+  - [x] `UPWORK_SOURCE=apify` triggers the Apify actor `neatrat/upwork-job-scraper` per keyword and returns normalized jobs matching the existing fetcher interface
+  - [x] At least one live job per keyword flows through dedupe → Claude → sheet on a real run
+  - [x] Apify rate errors, empty results, and actor failures are caught per-keyword and logged without crashing the cron loop
+  - [x] `APIFY_API_TOKEN` added to `server/.env.example` as a placeholder; never committed with a real value
+  - [x] `UPWORK_SOURCE=fixtures` still works unchanged (no regression)
