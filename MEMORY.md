@@ -29,6 +29,11 @@ When a class of decision has been approved enough times that it's safe to auto-a
 - Backend routes in `server/routes/api.js`; integrations in `server/services/*`.
 - _(add naming / structure conventions as they emerge)_
 
+## Conventions
+- Upwork settings persisted in `server/data/upworkConfig.json` (gitignored) via `upworkConfigStore.js`. Config fallback order: env var → stored JSON → hardcoded default.
+- Cron schedule is registered once at boot — interval changes require a server restart. Keywords/AUTO_COVER/ACTOR_ID are re-read from config store on each cycle via `config.js` requiring at module load (restart needed for those too unless `upworkMonitor` is refactored to re-require).
+- The React client API base is hardcoded to `http://localhost:8080/api` (not the proxy). The proxy in `client/package.json` is stale (`localhost:5000`) — do not rely on it.
+
 ## Gotchas
 - Client proxies API calls to `http://localhost:5000` (see `client/package.json` `proxy`). The server must be running for the UI to work.
 - Server needs `server/.env` populated (see `server/.env.example`) or Sheets/SMTP/AI calls fail.

@@ -8,6 +8,10 @@ const {
 } = require('../services/sheetsService')
 const { generateEmail } = require('../services/aiService')
 const { sendEmail, verifyConnection } = require('../services/emailService')
+const { fetchJobRows, updateCoverLetter } = require('../services/upworkSheet')
+const { generateProposal } = require('../services/proposalService')
+const { readConfig, writeConfig } = require('../services/upworkConfigStore')
+const config = require('../jobs/config')
 
 // Global job state
 let jobState = {
@@ -229,6 +233,109 @@ router.post('/stop', (req, res) => {
   jobState.running = false
   addLog('info', 'Job manually stopped.')
   res.json({ success: true, message: 'Job stop requested' })
+})
+
+// ── Upwork dashboard routes ──
+
+// GET /api/upwork/settings — current effective settings (stored ?? live config)
+router.get('/upwork/settings', (req, res) => {
+  const stored = readConfig()
+  res.json({
+    success: true,
+    settings: {
+      actorId: stored.actorId || config.ACTOR_ID,
+      keywords: stored.keywords || config.KEYWORDS.join(','),
+      cronInterval: stored.cronInterval || config.CRON_INTERVAL,
+      autoCover: stored.autoCover ?? config.AUTO_COVER,
+    },
+  })
+})
+
+// POST /api/upwork/settings — persist UI-editable settings
+router.post('/upwork/settings', (req, res) => {
+  const { actorId, keywords, cronInterval, autoCover } = req.body || {}
+
+  if (typeof actorId !== 'string' || !actorId.trim())
+    return res
+      .status(400)
+      .json({ success: false, error: 'actorId must be a non-empty string' })
+  if (typeof keywords !== 'string' || !keywords.trim())
+    return res
+      .status(400)
+      .json({ success: false, error: 'keywords must be a non-empty string' })
+  if (typeof cronInterval !== 'string' || !cronInterval.trim())
+    return res
+      .status(400)
+      .json({ success: false, error: 'cronInterval must be a non-empty string' })
+  if (typeof autoCover !== 'boolean')
+    return res
+      .status(400)
+      .json({ success: false, error: 'autoCover must be a boolean' })
+
+  const settings = { actorId, keywords, cronInterval, autoCover }
+  try {
+    writeConfig(settings)
+    res.json({ success: true, settings })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/upwork/jobs — all job rows from the jobs sheet
+router.get('/upwork/jobs', async (req, res) => {
+  try {
+    const jobs = await fetchJobRows()
+    res.json({ success: true, jobs })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/upwork/stats — aggregate stats for the dashboard
+router.get('/upwork/stats', async (req, res) => {
+  try {
+    const stored = readConfig()
+    const rows = await fetchJobRows()
+    const stats = {
+      totalJobs: rows.length,
+      coverLettersGenerated: rows.filter(
+        (r) => r.coverLetter && r.coverLetter.trim(),
+      ).length,
+      activeActor: stored.actorId || config.ACTOR_ID,
+    }
+    res.json({ success: true, stats })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/upwork/generate-cover — generate + persist a cover letter for one row
+router.post('/upwork/generate-cover', async (req, res) => {
+  const { rowIndex } = req.body || {}
+  if (typeof rowIndex !== 'number')
+    return res
+      .status(400)
+      .json({ success: false, error: 'rowIndex must be a number' })
+
+  try {
+    const rows = await fetchJobRows()
+    const row = rows.find((r) => r.rowIndex === rowIndex)
+    if (!row)
+      return res.status(404).json({ success: false, error: 'Row not found' })
+
+    const jobObj = {
+      title: row.title,
+      description: '',
+      skills: row.skills ? row.skills.split(',').map((s) => s.trim()) : [],
+      clientCountry: row.clientCountry,
+    }
+
+    const letter = await generateProposal(jobObj)
+    await updateCoverLetter(rowIndex, letter)
+    res.json({ success: true, coverLetter: letter, rowIndex })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
 })
 
 module.exports = router

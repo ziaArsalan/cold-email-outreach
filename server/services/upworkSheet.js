@@ -40,4 +40,43 @@ const appendJobRow = async (job, coverLetter) => {
   });
 };
 
-module.exports = { appendJobRow };
+// Read all job rows from the jobs sheet (cols A→K). rowIndex is the 1-based
+// spreadsheet row (header is row 1, so first data row is row 2).
+const fetchJobRows = async () => {
+  const sheets = getSheetClient();
+  const { data } = await sheets.spreadsheets.values.get({
+    spreadsheetId: config.JOBS_SHEET_ID,
+    range: `${config.JOBS_TAB}!A:K`,
+  });
+
+  const rows = data.values || [];
+  if (rows.length <= 1) return [];
+
+  return rows.slice(1).map((row, i) => ({
+    rowIndex: i + 2,
+    title: row[0] || '',
+    url: row[1] || '',
+    skills: row[2] || '',
+    clientCountry: row[3] || '',
+    clientRating: row[4] || '',
+    applicants: row[5] || '',
+    contactName: row[6] || '',
+    contactConfidence: row[7] || '',
+    applyLink: row[8] || '',
+    coverLetter: row[9] || '',
+    dateFound: row[10] || '',
+  }));
+};
+
+// Write a cover letter into column J for a given spreadsheet row.
+const updateCoverLetter = async (rowIndex, text) => {
+  const sheets = getSheetClient();
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: config.JOBS_SHEET_ID,
+    range: `${config.JOBS_TAB}!J${rowIndex}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[text]] },
+  });
+};
+
+module.exports = { appendJobRow, fetchJobRows, updateCoverLetter };

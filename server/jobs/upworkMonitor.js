@@ -36,11 +36,16 @@ const runCycle = async () => {
       }
 
       try {
-        const coverLetter = await generateProposal(job);
-        await appendJobRow(job, coverLetter);
+        if (config.AUTO_COVER) {
+          const coverLetter = await generateProposal(job);
+          await appendJobRow(job, coverLetter);
+          console.log(`[upworkMonitor] [${keyword}] NEW — ${job.title}`);
+        } else {
+          await appendJobRow(job, '');
+          console.log(`[upworkMonitor] [${keyword}] NEW (no cover — auto-cover off) — ${job.title}`);
+        }
         seenStore.add(key);
         seenStore.persist();
-        console.log(`[upworkMonitor] [${keyword}] NEW — ${job.title}`);
       } catch (err) {
         console.error(`[upworkMonitor] [${keyword}] FAILED — ${job.title}: ${err.message}`);
       }

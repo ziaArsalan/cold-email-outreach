@@ -27,6 +27,21 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-004] Upwork dashboard — frontend module (stats, settings, jobs table, cover letter actions)
+- priority: P1
+- status: done
+- area: both
+- description: Add an "Upwork" sidebar tab to the React client. Inside: a stats bar (total jobs fetched, cover letters generated, active actor), a settings panel (actor ID, keywords, cron interval, auto-cover toggle), and a jobs table sourced from the jobs Google Sheet with per-row "Generate Cover" action (only shown/enabled when auto-cover is off and that row has no cover letter yet). Settings persist server-side in `server/data/upworkConfig.json` (gitignored). New server endpoints: `GET/POST /api/upwork/settings`, `GET /api/upwork/jobs`, `GET /api/upwork/stats`, `POST /api/upwork/generate-cover` (body: `{ rowIndex }`). The existing `server/jobs/config.js` must fall back gracefully to `upworkConfig.json` values when env vars are absent so settings saved in the UI take effect on the next cron cycle.
+- acceptance:
+  - [x] An "Upwork" tab is visible in the sidebar and clicking it shows the Upwork module (no other tabs break)
+  - [x] Stats bar shows: total rows in the jobs sheet, how many have a non-empty cover letter (col J), and the active actor ID read from settings
+  - [x] Settings panel fields: Actor ID (text), Keywords (textarea, comma-separated), Cron Interval (text, cron expression), Auto-generate cover letter (checkbox). Saving persists to `server/data/upworkConfig.json` and a success confirmation is shown
+  - [x] Jobs table loads rows from the jobs Google Sheet (all 11 columns) with column headers; shows a loading state while fetching
+  - [x] When auto-cover is OFF: each row without a cover letter (col J empty) shows a "Generate Cover" button; clicking it calls `POST /api/upwork/generate-cover`, shows a loading spinner on that row, and populates the cover letter cell when done
+  - [x] When auto-cover is ON: the "Generate Cover" action button column is hidden (cover letters are generated automatically by the cron)
+  - [x] Cover letter cell shows a truncated preview (first 80 chars + "…") with a click-to-expand modal or tooltip to read the full text
+  - [x] The jobs table has a "Refresh" button that re-fetches from the sheet
+
 ## [T-002] Upwork job monitor — core pipeline (fixtures-backed)
 
 - priority: P1

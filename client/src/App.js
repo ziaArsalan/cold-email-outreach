@@ -37,6 +37,16 @@ export default function App() {
   const [smtpStatus, setSmtpStatus] = useState(null)
   const [bulkGenerating, setBulkGenerating] = useState(false)
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 })
+  // Upwork tab state
+  const [upworkSettings, setUpworkSettings] = useState(null)
+  const [upworkStats, setUpworkStats] = useState(null)
+  const [upworkJobs, setUpworkJobs] = useState([])
+  const [upworkJobsLoading, setUpworkJobsLoading] = useState(false)
+  const [upworkSettingsSaving, setUpworkSettingsSaving] = useState(false)
+  const [upworkSettingsSaved, setUpworkSettingsSaved] = useState(false)
+  const [rowBusy, setRowBusy] = useState(new Set())
+  const [coverModal, setCoverModal] = useState(null)
+  const [draftSettings, setDraftSettings] = useState(null)
   const pollRef = useRef(null)
 
   const fetchLeads = async () => {
@@ -147,6 +157,88 @@ export default function App() {
     await fetchLeads()
   }
 
+  // ── Upwork helpers ──
+  const fetchUpworkSettings = async () => {
+    try {
+      const { data } = await axios.get(`${API}/upwork/settings`)
+      setUpworkSettings(data.settings)
+    } catch (e) {}
+  }
+
+  const fetchUpworkStats = async () => {
+    try {
+      const { data } = await axios.get(`${API}/upwork/stats`)
+      setUpworkStats(data.stats)
+    } catch (e) {}
+  }
+
+  const fetchUpworkJobs = async () => {
+    setUpworkJobsLoading(true)
+    try {
+      const { data } = await axios.get(`${API}/upwork/jobs`)
+      setUpworkJobs(data.jobs || [])
+    } catch (e) {
+    } finally {
+      setUpworkJobsLoading(false)
+    }
+  }
+
+  const fetchUpworkAll = async () => {
+    await Promise.all([
+      fetchUpworkSettings(),
+      fetchUpworkStats(),
+      fetchUpworkJobs(),
+    ])
+  }
+
+  const saveUpworkSettings = async (s) => {
+    setUpworkSettingsSaving(true)
+    try {
+      const { data } = await axios.post(`${API}/upwork/settings`, s)
+      setUpworkSettings(data.settings)
+      setUpworkSettingsSaved(true)
+      setTimeout(() => setUpworkSettingsSaved(false), 2000)
+    } catch (e) {
+      alert('Failed to save settings: ' + e.message)
+    } finally {
+      setUpworkSettingsSaving(false)
+    }
+  }
+
+  const generateCover = async (rowIndex) => {
+    setRowBusy((prev) => new Set([...prev, rowIndex]))
+    try {
+      const { data } = await axios.post(`${API}/upwork/generate-cover`, {
+        rowIndex,
+      })
+      if (data.success) {
+        setUpworkJobs((jobs) =>
+          jobs.map((j) =>
+            j.rowIndex === rowIndex
+              ? { ...j, coverLetter: data.coverLetter }
+              : j,
+          ),
+        )
+        fetchUpworkStats()
+      }
+    } catch (e) {
+      alert('Failed to generate cover letter: ' + e.message)
+    } finally {
+      setRowBusy((prev) => {
+        const next = new Set(prev)
+        next.delete(rowIndex)
+        return next
+      })
+    }
+  }
+
+  // Keep the editable draft in sync when settings first load
+  useEffect(() => {
+    if (upworkSettings && !draftSettings) {
+      setDraftSettings(upworkSettings)
+    }
+  }, [upworkSettings])
+
   const pending = leads.filter((l) => !l.status).length
   const emailed = leads.filter((l) => l.status === 'Emailed').length
   const failed = leads.filter((l) => l.status === 'Failed').length
@@ -178,6 +270,15 @@ export default function App() {
             }}
           >
             <span className='nav-icon'>◉</span> Leads
+          </button>
+          <button
+            className={tab === 'upwork' ? 'nav-item active' : 'nav-item'}
+            onClick={() => {
+              setTab('upwork')
+              fetchUpworkAll()
+            }}
+          >
+            <span className='nav-icon'>◆</span> Upwork
           </button>
           <button
             className={tab === 'settings' ? 'nav-item active' : 'nav-item'}
@@ -429,6 +530,8 @@ export default function App() {
               {previewLead && (
                 <p>
                   For {previewLead.name} at {previewLead.business}
+                  <br />
+                  {previewLead.email}
                 </p>
               )}
             </div>
@@ -484,6 +587,252 @@ export default function App() {
                 {/* )} */}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── UPWORK TAB ── */}
+        {tab === 'upwork' && (
+          <div className='tab-content'>
+            <div className='page-header'>
+              <h1>Upwork Monitor</h1>
+              <p>Tracked jobs, settings, and AI cover letters</p>
+            </div>
+
+            {/* Stats */}
+            <div className='stats-grid'>
+              <div className='stat-card'>
+                <span className='stat-num'>{upworkStats?.totalJobs ?? '—'}</span>
+                <span className='stat-label'>Total Jobs</span>
+              </div>
+              <div className='stat-card'>
+                <span className='stat-num'>
+                  {upworkStats?.coverLettersGenerated ?? '—'}
+                </span>
+                <span className='stat-label'>Cover Letters</span>
+              </div>
+              <div className='stat-card'>
+                <span className='stat-num' style={{ fontSize: '16px' }}>
+                  {upworkStats?.activeActor
+                    ? upworkStats.activeActor.split('/').pop()
+                    : '—'}
+                </span>
+                <span className='stat-label'>Active Actor</span>
+              </div>
+            </div>
+
+            {/* Settings */}
+            <div className='card settings-card'>
+              <h2>Monitor Settings</h2>
+              <div className='controls-row'>
+                <div className='control-group'>
+                  <label>Actor ID</label>
+                  <input
+                    type='text'
+                    value={draftSettings?.actorId ?? ''}
+                    onChange={(e) =>
+                      setDraftSettings((d) => ({
+                        ...d,
+                        actorId: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className='control-group'>
+                  <label>Cron Interval</label>
+                  <input
+                    type='text'
+                    value={draftSettings?.cronInterval ?? ''}
+                    onChange={(e) =>
+                      setDraftSettings((d) => ({
+                        ...d,
+                        cronInterval: e.target.value,
+                      }))
+                    }
+                  />
+                  <span className='field-note'>
+                    Interval changes apply after server restart.
+                  </span>
+                </div>
+              </div>
+              <div className='control-group' style={{ marginTop: '1rem' }}>
+                <label>Keywords (comma-separated)</label>
+                <textarea
+                  rows={3}
+                  value={draftSettings?.keywords ?? ''}
+                  onChange={(e) =>
+                    setDraftSettings((d) => ({
+                      ...d,
+                      keywords: e.target.value,
+                    }))
+                  }
+                  style={{
+                    background: 'var(--surface2)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    padding: '0.5rem 0.75rem',
+                    color: 'var(--text)',
+                    fontFamily: "'Space Mono', monospace",
+                    fontSize: '13px',
+                    width: '100%',
+                    outline: 'none',
+                    resize: 'vertical',
+                  }}
+                />
+              </div>
+              <div style={{ marginTop: '1rem' }}>
+                <label className='checkbox-row'>
+                  <input
+                    type='checkbox'
+                    checked={!!draftSettings?.autoCover}
+                    onChange={(e) =>
+                      setDraftSettings((d) => ({
+                        ...d,
+                        autoCover: e.target.checked,
+                      }))
+                    }
+                  />
+                  Auto-generate cover letter
+                </label>
+              </div>
+              <div
+                style={{
+                  marginTop: '1.25rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
+                }}
+              >
+                <button
+                  className='btn-start'
+                  disabled={upworkSettingsSaving || !draftSettings}
+                  onClick={() => saveUpworkSettings(draftSettings)}
+                >
+                  {upworkSettingsSaving ? 'Saving…' : 'Save Settings'}
+                </button>
+                {upworkSettingsSaved && (
+                  <span className='badge-ok'>Saved</span>
+                )}
+              </div>
+            </div>
+
+            {/* Jobs table */}
+            <div className='card table-card'>
+              <div
+                className='bulk-actions'
+                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2 style={{ margin: 0 }}>Upwork Jobs</h2>
+                <button
+                  className='btn-ghost'
+                  onClick={() => {
+                    fetchUpworkJobs()
+                    fetchUpworkStats()
+                  }}
+                >
+                  ↻ Refresh
+                </button>
+              </div>
+              {upworkJobsLoading ? (
+                <div className='loading-card'>
+                  <div className='spinner' />
+                  <p>Loading jobs…</p>
+                </div>
+              ) : (
+                <div className='table-wrapper'>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Title</th>
+                        <th>Link</th>
+                        <th>Skills</th>
+                        <th>Country</th>
+                        <th>Rating</th>
+                        <th>Applicants</th>
+                        <th>Contact</th>
+                        <th>Confidence</th>
+                        <th>Apply</th>
+                        <th>Cover Letter</th>
+                        <th>Date</th>
+                        {!upworkSettings?.autoCover && <th>Actions</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {upworkJobs.map((job) => (
+                        <tr key={job.rowIndex}>
+                          <td>{job.title}</td>
+                          <td>
+                            {job.url && (
+                              <a
+                                href={job.url}
+                                target='_blank'
+                                rel='noreferrer'
+                                className='link'
+                              >
+                                View
+                              </a>
+                            )}
+                          </td>
+                          <td>{job.skills}</td>
+                          <td>{job.clientCountry}</td>
+                          <td>{job.clientRating}</td>
+                          <td>{job.applicants}</td>
+                          <td>{job.contactName}</td>
+                          <td>{job.contactConfidence}</td>
+                          <td>
+                            {job.applyLink && (
+                              <a
+                                href={job.applyLink}
+                                target='_blank'
+                                rel='noreferrer'
+                                className='link'
+                              >
+                                Apply
+                              </a>
+                            )}
+                          </td>
+                          <td>
+                            {job.coverLetter && job.coverLetter.trim() ? (
+                              <span
+                                className='cover-preview'
+                                onClick={() => setCoverModal(job.coverLetter)}
+                              >
+                                {job.coverLetter.slice(0, 80)}…
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td>{job.dateFound}</td>
+                          {!upworkSettings?.autoCover && (
+                            <td>
+                              {!job.coverLetter?.trim() &&
+                                (rowBusy.has(job.rowIndex) ? (
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                    }}
+                                  >
+                                    <span className='spinner' /> Generating…
+                                  </span>
+                                ) : (
+                                  <button
+                                    className='btn-preview'
+                                    onClick={() => generateCover(job.rowIndex)}
+                                  >
+                                    Generate Cover
+                                  </button>
+                                ))}
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -550,6 +899,21 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* ── Cover letter modal ── */}
+      {coverModal && (
+        <div className='modal-overlay' onClick={() => setCoverModal(null)}>
+          <div className='modal-card' onClick={(e) => e.stopPropagation()}>
+            <button
+              className='modal-close btn-ghost'
+              onClick={() => setCoverModal(null)}
+            >
+              ✕ Close
+            </button>
+            <pre>{coverModal}</pre>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

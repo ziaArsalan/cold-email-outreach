@@ -4,6 +4,12 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-06-06 — [T-004] Upwork dashboard — frontend module
+- **Added:** "Upwork" sidebar tab with: stats bar (Total Jobs, Cover Letters, Active Actor), settings panel (Actor ID, Keywords, Cron Interval with restart note, Auto-generate toggle) persisted to `server/data/upworkConfig.json`, jobs table with all 11 columns sourced from the jobs Google Sheet, truncated cover letter previews with click-to-expand modal, "Generate Cover" action button per row (shown only when auto-cover is OFF and row has no letter), ↻ Refresh. Server: 4 new `/api/upwork/*` routes, `upworkConfigStore.js`, `fetchJobRows`/`updateCoverLetter` in `upworkSheet.js`, AUTO_COVER wired into `upworkMonitor.js`.
+- **Area:** both
+- **QA:** PASS — browser-verified via Playwright MCP: all 8 criteria confirmed including live sheet data (17 jobs), settings save/persist, modal open/close, auto-cover column toggle.
+- **Commit:** T-004
+
 ### 2026-06-06 — [T-003] Upwork job monitor — wire Apify real job source
 - **Added:** `UPWORK_SOURCE=apify` activates the Apify actor `neatrat/upwork-job-scraper` (npm: `apify-client`) behind the existing pluggable fetcher interface. `mapApifyItem()` adapter translates real actor output fields (`tags`→skills, `clientLocation`→country, `proposals`→applicants, `clientRating`, `clientName`/`clientNameConfidence`→contact fields). `APIFY_MAX_RESULTS` config (default 25, min 10). `UPWORK_SOURCE=fixtures` unchanged.
 - **Area:** server

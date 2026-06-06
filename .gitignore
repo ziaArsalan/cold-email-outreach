@@ -11,3 +11,10 @@ credentials.json
 
 # Claude Code — machine-local overrides (keep shared config in settings.json)
 .claude/settings.local.json
+
+# QA screenshots & Playwright runtime
+*.png
+.playwright-mcp/
+
+# Client build output
+client/build/
