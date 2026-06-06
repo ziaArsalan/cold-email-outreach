@@ -1,0 +1,22 @@
+{
+  "enabledMcpjsonServers": ["playwright"],
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git branch:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(npx playwright:*)",
+      "Read",
+      "Edit",
+      "Write",
+      "mcp__playwright"
+    ]
+  }
+}

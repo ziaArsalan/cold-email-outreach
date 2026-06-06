@@ -1,7 +1,22 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const cron = require('node-cron');
 const apiRoutes = require('./routes/api');
+const config = require('./jobs/config');
+const { runCycle } = require('./jobs/upworkMonitor');
+
+// One-shot dry-run: run a single monitor cycle and exit. Does not start the
+// HTTP listener or the cron scheduler.
+if (process.argv.includes('--once')) {
+  runCycle()
+    .then(() => process.exit(0))
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    });
+  return;
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -15,4 +30,6 @@ app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISO
 
 app.listen(PORT, () => {
   console.log(`Devtronics Outreach Server running on port ${PORT}`);
+  cron.schedule(config.CRON_INTERVAL, runCycle);
+  console.log(`[upworkMonitor] cron scheduled — interval=${config.CRON_INTERVAL}`);
 });
