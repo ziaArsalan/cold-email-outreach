@@ -27,6 +27,20 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-005] Upwork monitor controls — cron toggle, time-window scheduling, proposal limit, test-query
+- priority: P1
+- status: done
+- area: both
+- description: Extend the Upwork settings panel with four new controls: (1) **Cron on/off toggle** — a runtime enable/disable switch; the scheduled task still fires on its interval but `runCycle` skips execution when disabled, and the UI shows current state. (2) **Active time window** — configurable start/end time (HH:MM, 24h) during which the cron is allowed to run; outside the window cycles are silently skipped; the UI shows two time inputs and an "enable schedule" checkbox. (3) **Proposal limit** — max proposals to generate per day (integer); tracked in `server/data/upworkConfig.json` alongside a `dailyCount` + `dailyCountDate` (ISO date string); resets to 0 each new calendar day; when limit is reached the cycle skips `generateProposal` and logs it. (4) **Test query button** — a "Test Query" button in the settings panel that calls `POST /api/upwork/test-query` with the current keyword list (first keyword used, or user-selectable), runs the fetcher only (no Claude, no sheet write, no seen-store update), and displays the raw job list (title, link, skills, country, applicants) in a results panel below the button. New/changed server: `runCycle` reads config live from `upworkConfigStore` each cycle (so toggle/limit/window changes take effect without restart); `server/index.js` cron wiring unchanged (schedule is fixed at boot). Persist all new settings in `upworkConfig.json` alongside existing fields.
+- acceptance:
+  - [x] Settings panel shows a prominent ON/OFF toggle for the cron; toggling and saving reflects in the UI and persists; when OFF the next cron tick logs "[upworkMonitor] cron disabled — skipping cycle" and does not process jobs
+  - [x] Settings panel shows "Active hours" — enable checkbox + Start time + End time inputs (HH:MM). When enabled and current time is outside the window, the cycle logs "[upworkMonitor] outside active window (HH:MM–HH:MM) — skipping" and does not process jobs
+  - [x] Settings panel shows "Daily proposal limit" number input. When the day's generated proposal count reaches the limit, `runCycle` logs "[upworkMonitor] daily limit reached (N/N) — skipping proposals" and appends rows with empty cover letters for the rest of that day; count resets to 0 the next calendar day
+  - [x] Stats bar shows current daily proposal count vs limit (e.g. "12 / 20 today")
+  - [x] "Test Query" button in the settings panel: clicking it calls `POST /api/upwork/test-query` with the first keyword from the settings keyword list, shows a loading state, then renders a results card with a list of jobs returned (title, URL, skills, country, applicants) — no sheet rows written, no cover letters generated, no seen-store updates
+  - [x] All five new settings (cronEnabled, scheduleEnabled, scheduleStart, scheduleEnd, dailyLimit) persist to `server/data/upworkConfig.json` and survive a server restart
+  - [x] Existing settings (actor ID, keywords, cron interval, auto-cover) continue to work unchanged
+
 ## [T-004] Upwork dashboard — frontend module (stats, settings, jobs table, cover letter actions)
 - priority: P1
 - status: done

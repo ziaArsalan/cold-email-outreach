@@ -4,6 +4,12 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-06-08 — [T-005] Upwork monitor controls — cron toggle, time-window, daily limit, test-query
+- **Added:** Cron ON/OFF toggle (runtime, no restart needed); Active Hours scheduling (enable checkbox + start/end HH:MM time inputs, overnight windows supported); Daily Job Limit (counts every appended job, resets each calendar day, persisted in `upworkConfig.json`); "🔍 Test Query" button (runs fetcher only — no Claude, no sheet write, no seen-store update — returns job list in UI). Stats bar 4th tile: "Today's Jobs (count / limit)". `runCycle` now reads config live from `upworkConfigStore` each cycle so all new controls take effect without a server restart.
+- **Area:** both
+- **QA:** PASS — browser-verified via Playwright MCP: toggle persists OFF after reload, active-hours times persist, daily limit tile shows "0/5", Test Query returned 50 live GoHighLevel jobs with no sheet rows written, all existing settings unchanged.
+- **Commit:** T-005
+
 ### 2026-06-06 — [T-004] Upwork dashboard — frontend module
 - **Added:** "Upwork" sidebar tab with: stats bar (Total Jobs, Cover Letters, Active Actor), settings panel (Actor ID, Keywords, Cron Interval with restart note, Auto-generate toggle) persisted to `server/data/upworkConfig.json`, jobs table with all 11 columns sourced from the jobs Google Sheet, truncated cover letter previews with click-to-expand modal, "Generate Cover" action button per row (shown only when auto-cover is OFF and row has no letter), ↻ Refresh. Server: 4 new `/api/upwork/*` routes, `upworkConfigStore.js`, `fetchJobRows`/`updateCoverLetter` in `upworkSheet.js`, AUTO_COVER wired into `upworkMonitor.js`.
 - **Area:** both

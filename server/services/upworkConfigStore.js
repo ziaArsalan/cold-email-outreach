@@ -23,4 +23,28 @@ const writeConfig = (obj) => {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(obj, null, 2));
 };
 
-module.exports = { readConfig, writeConfig };
+const today = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+// Daily count resets automatically when the stored date is not today.
+const readDailyCount = () => {
+  const stored = readConfig();
+  if (stored.dailyCountDate !== today()) return 0;
+  return stored.dailyCount || 0;
+};
+
+// Increments (and resets on a new day) the count of jobs appended today.
+// Writes the FULL config back so other fields are preserved.
+const incrementDailyCount = () => {
+  const stored = readConfig();
+  let count = stored.dailyCount || 0;
+  let date = stored.dailyCountDate;
+  if (date !== today()) {
+    count = 0;
+    date = today();
+  }
+  count += 1;
+  writeConfig({ ...stored, dailyCount: count, dailyCountDate: date });
+  return count;
+};
+
+module.exports = { readConfig, writeConfig, today, readDailyCount, incrementDailyCount };

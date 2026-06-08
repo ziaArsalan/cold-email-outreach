@@ -10,7 +10,8 @@ const { generateEmail } = require('../services/aiService')
 const { sendEmail, verifyConnection } = require('../services/emailService')
 const { fetchJobRows, updateCoverLetter } = require('../services/upworkSheet')
 const { generateProposal } = require('../services/proposalService')
-const { readConfig, writeConfig } = require('../services/upworkConfigStore')
+const { readConfig, writeConfig, readDailyCount } = require('../services/upworkConfigStore')
+const { fetchJobs } = require('../services/upworkFetch')
 const config = require('../jobs/config')
 
 // Global job state
@@ -247,13 +248,28 @@ router.get('/upwork/settings', (req, res) => {
       keywords: stored.keywords || config.KEYWORDS.join(','),
       cronInterval: stored.cronInterval || config.CRON_INTERVAL,
       autoCover: stored.autoCover ?? config.AUTO_COVER,
+      cronEnabled: stored.cronEnabled ?? true,
+      scheduleEnabled: stored.scheduleEnabled ?? false,
+      scheduleStart: stored.scheduleStart || '09:00',
+      scheduleEnd: stored.scheduleEnd || '18:00',
+      dailyLimit: stored.dailyLimit ?? 0,
     },
   })
 })
 
 // POST /api/upwork/settings — persist UI-editable settings
 router.post('/upwork/settings', (req, res) => {
-  const { actorId, keywords, cronInterval, autoCover } = req.body || {}
+  const {
+    actorId,
+    keywords,
+    cronInterval,
+    autoCover,
+    cronEnabled,
+    scheduleEnabled,
+    scheduleStart,
+    scheduleEnd,
+    dailyLimit,
+  } = req.body || {}
 
   if (typeof actorId !== 'string' || !actorId.trim())
     return res
@@ -271,10 +287,42 @@ router.post('/upwork/settings', (req, res) => {
     return res
       .status(400)
       .json({ success: false, error: 'autoCover must be a boolean' })
+  if (typeof cronEnabled !== 'boolean')
+    return res
+      .status(400)
+      .json({ success: false, error: 'cronEnabled must be a boolean' })
+  if (typeof scheduleEnabled !== 'boolean')
+    return res
+      .status(400)
+      .json({ success: false, error: 'scheduleEnabled must be a boolean' })
+  if (typeof scheduleStart !== 'string' || !/^\d{2}:\d{2}$/.test(scheduleStart))
+    return res
+      .status(400)
+      .json({ success: false, error: 'scheduleStart must be HH:MM' })
+  if (typeof scheduleEnd !== 'string' || !/^\d{2}:\d{2}$/.test(scheduleEnd))
+    return res
+      .status(400)
+      .json({ success: false, error: 'scheduleEnd must be HH:MM' })
+  if (typeof dailyLimit !== 'number' || dailyLimit < 0)
+    return res
+      .status(400)
+      .json({ success: false, error: 'dailyLimit must be a number >= 0' })
 
-  const settings = { actorId, keywords, cronInterval, autoCover }
+  // Spread current config first so dailyCount/dailyCountDate are preserved.
+  const current = readConfig()
+  const settings = {
+    actorId,
+    keywords,
+    cronInterval,
+    autoCover,
+    cronEnabled,
+    scheduleEnabled,
+    scheduleStart,
+    scheduleEnd,
+    dailyLimit,
+  }
   try {
-    writeConfig(settings)
+    writeConfig({ ...current, ...settings })
     res.json({ success: true, settings })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
@@ -302,6 +350,8 @@ router.get('/upwork/stats', async (req, res) => {
         (r) => r.coverLetter && r.coverLetter.trim(),
       ).length,
       activeActor: stored.actorId || config.ACTOR_ID,
+      dailyCount: readDailyCount(),
+      dailyLimit: readConfig().dailyLimit ?? 0,
     }
     res.json({ success: true, stats })
   } catch (err) {
@@ -333,6 +383,33 @@ router.post('/upwork/generate-cover', async (req, res) => {
     const letter = await generateProposal(jobObj)
     await updateCoverLetter(rowIndex, letter)
     res.json({ success: true, coverLetter: letter, rowIndex })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/upwork/test-query — run a live fetch for one keyword (no append/persist)
+router.post('/upwork/test-query', async (req, res) => {
+  try {
+    const live = readConfig()
+    const keywords = live.keywords
+      ? live.keywords.split(',').map((k) => k.trim()).filter(Boolean)
+      : config.KEYWORDS
+    const keyword =
+      (req.body.keyword && req.body.keyword.trim()) ||
+      keywords[0] ||
+      'GoHighLevel'
+    const jobs = await fetchJobs(keyword)
+    const result = jobs.map((j) => ({
+      title: j.title || '',
+      url: j.url || '',
+      skills: Array.isArray(j.skills)
+        ? j.skills
+        : (j.skills || '').split(',').map((s) => s.trim()).filter(Boolean),
+      clientCountry: j.clientCountry || '',
+      applicants: j.applicants || 0,
+    }))
+    res.json({ success: true, keyword, count: result.length, jobs: result })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }

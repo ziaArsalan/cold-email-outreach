@@ -31,7 +31,7 @@ When a class of decision has been approved enough times that it's safe to auto-a
 
 ## Conventions
 - Upwork settings persisted in `server/data/upworkConfig.json` (gitignored) via `upworkConfigStore.js`. Config fallback order: env var → stored JSON → hardcoded default.
-- Cron schedule is registered once at boot — interval changes require a server restart. Keywords/AUTO_COVER/ACTOR_ID are re-read from config store on each cycle via `config.js` requiring at module load (restart needed for those too unless `upworkMonitor` is refactored to re-require).
+- Cron schedule is registered once at boot — **interval** changes still require a server restart. All other runtime settings (cronEnabled, autoCover, keywords, scheduleEnabled/Start/End, dailyLimit) are read live from `upworkConfigStore.readConfig()` at the start of each `runCycle` — changes take effect on the next tick without restart.
 - The React client API base is hardcoded to `http://localhost:8080/api` (not the proxy). The proxy in `client/package.json` is stale (`localhost:5000`) — do not rely on it.
 
 ## Gotchas

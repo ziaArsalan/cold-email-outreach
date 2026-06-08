@@ -47,6 +47,8 @@ export default function App() {
   const [rowBusy, setRowBusy] = useState(new Set())
   const [coverModal, setCoverModal] = useState(null)
   const [draftSettings, setDraftSettings] = useState(null)
+  const [upworkTestLoading, setUpworkTestLoading] = useState(false)
+  const [upworkTestResults, setUpworkTestResults] = useState(null)
   const pollRef = useRef(null)
 
   const fetchLeads = async () => {
@@ -230,6 +232,20 @@ export default function App() {
         return next
       })
     }
+  }
+
+  const testUpworkQuery = async () => {
+    setUpworkTestLoading(true)
+    setUpworkTestResults(null)
+    try {
+      const { data } = await axios.post(`${API}/upwork/test-query`, {
+        keyword: draftSettings?.keywords?.split(',')[0]?.trim() || '',
+      })
+      setUpworkTestResults(data)
+    } catch (e) {
+      setUpworkTestResults({ error: e.message })
+    }
+    setUpworkTestLoading(false)
   }
 
   // Keep the editable draft in sync when settings first load
@@ -618,11 +634,38 @@ export default function App() {
                 </span>
                 <span className='stat-label'>Active Actor</span>
               </div>
+              <div className='stat-card'>
+                <span className='stat-num'>
+                  {upworkStats
+                    ? `${upworkStats.dailyCount ?? 0} / ${upworkStats.dailyLimit || '∞'}`
+                    : '—'}
+                </span>
+                <span className='stat-label'>Today's Jobs</span>
+              </div>
             </div>
 
             {/* Settings */}
             <div className='card settings-card'>
               <h2>Monitor Settings</h2>
+              <div className='control-group'>
+                <label>Cron Status</label>
+                <label className='toggle-switch'>
+                  <input
+                    type='checkbox'
+                    checked={draftSettings?.cronEnabled ?? true}
+                    onChange={(e) =>
+                      setDraftSettings((s) => ({
+                        ...s,
+                        cronEnabled: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span className='toggle-slider' />
+                  <span className='toggle-label'>
+                    {(draftSettings?.cronEnabled ?? true) ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
               <div className='controls-row'>
                 <div className='control-group'>
                   <label>Actor ID</label>
@@ -653,6 +696,23 @@ export default function App() {
                     Interval changes apply after server restart.
                   </span>
                 </div>
+                <div className='control-group'>
+                  <label>Daily Job Limit</label>
+                  <input
+                    type='number'
+                    min='0'
+                    value={draftSettings?.dailyLimit ?? 0}
+                    onChange={(e) =>
+                      setDraftSettings((s) => ({
+                        ...s,
+                        dailyLimit: Number(e.target.value),
+                      }))
+                    }
+                  />
+                  <span className='field-note'>
+                    Max jobs to append per day (0 = unlimited)
+                  </span>
+                </div>
               </div>
               <div className='control-group' style={{ marginTop: '1rem' }}>
                 <label>Keywords (comma-separated)</label>
@@ -678,6 +738,47 @@ export default function App() {
                     resize: 'vertical',
                   }}
                 />
+              </div>
+              <div className='control-group' style={{ marginTop: '1rem' }}>
+                <label>Active Hours</label>
+                <label className='checkbox-row'>
+                  <input
+                    type='checkbox'
+                    checked={draftSettings?.scheduleEnabled ?? false}
+                    onChange={(e) =>
+                      setDraftSettings((s) => ({
+                        ...s,
+                        scheduleEnabled: e.target.checked,
+                      }))
+                    }
+                  />
+                  Enable time window
+                </label>
+                {draftSettings?.scheduleEnabled && (
+                  <div className='time-range-row'>
+                    <input
+                      type='time'
+                      value={draftSettings?.scheduleStart || '09:00'}
+                      onChange={(e) =>
+                        setDraftSettings((s) => ({
+                          ...s,
+                          scheduleStart: e.target.value,
+                        }))
+                      }
+                    />
+                    <span>to</span>
+                    <input
+                      type='time'
+                      value={draftSettings?.scheduleEnd || '18:00'}
+                      onChange={(e) =>
+                        setDraftSettings((s) => ({
+                          ...s,
+                          scheduleEnd: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                )}
               </div>
               <div style={{ marginTop: '1rem' }}>
                 <label className='checkbox-row'>
@@ -711,6 +812,43 @@ export default function App() {
                 </button>
                 {upworkSettingsSaved && (
                   <span className='badge-ok'>Saved</span>
+                )}
+              </div>
+              <div className='control-group' style={{ marginTop: '1.25rem' }}>
+                <button
+                  className='btn-ghost'
+                  onClick={testUpworkQuery}
+                  disabled={upworkTestLoading}
+                >
+                  {upworkTestLoading ? 'Testing…' : '🔍 Test Query'}
+                </button>
+                {upworkTestResults && !upworkTestResults.error && (
+                  <div className='test-results-card'>
+                    <div className='test-results-header'>
+                      "{upworkTestResults.keyword}" — {upworkTestResults.count}{' '}
+                      jobs found
+                    </div>
+                    <ul className='test-results-list'>
+                      {upworkTestResults.jobs.map((j, i) => (
+                        <li key={i}>
+                          <a href={j.url} target='_blank' rel='noreferrer'>
+                            {j.title}
+                          </a>
+                          <span className='test-result-meta'>
+                            {j.clientCountry} · {j.applicants} applicants ·{' '}
+                            {Array.isArray(j.skills)
+                              ? j.skills.slice(0, 3).join(', ')
+                              : j.skills}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {upworkTestResults?.error && (
+                  <div className='test-results-card test-results-error'>
+                    {upworkTestResults.error}
+                  </div>
                 )}
               </div>
             </div>
