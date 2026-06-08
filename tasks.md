@@ -27,6 +27,20 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-006] Login screen + Monitor Settings UI polish
+- priority: P0
+- status: done
+- area: both
+- description: Two go-live requirements. (1) **Login screen** — a full-page login form (email + password) that gates the entire app. Server: `POST /api/auth/login` validates against `AUTH_EMAIL` + `AUTH_PASSWORD` env vars and returns a signed JWT (`JWT_SECRET` env var, 8h expiry). Client: stores token in `localStorage`, attaches it as `Authorization: Bearer <token>` on every API call, redirects to login on 401. No signup — single-user only. All `/api/*` routes except `/api/auth/login` require a valid token via Express middleware. (2) **Monitor Settings UI polish** — reorganise the settings card into a clean 2-column grid layout with logical grouping: a "Cron Control" section (toggle + interval), a "Schedule" section (active hours), a "Limits" section (daily limit), a "Source" section (actor ID + keywords), and an "Options" section (auto-cover). Fix the cramped/misaligned layout visible in current UI. Credentials live only in `server/.env` — never committed.
+- acceptance:
+  - [x] Visiting the app when not logged in shows a full-page login screen (Devtronics branding, email + password fields, Login button)
+  - [x] Correct credentials log in and show the main app; incorrect credentials show an error message
+  - [x] After login, refreshing the page keeps the user logged in (token persists in localStorage)
+  - [x] A "Logout" button in the app header/nav clears the token and returns to the login screen
+  - [x] All API calls include the JWT; a direct API call without a token returns 401
+  - [x] Monitor Settings card has a clean 2-column grid layout with clearly grouped sections; fields are not cramped or misaligned; the cron toggle is prominently styled at the top
+  - [x] All existing Upwork settings (actor ID, keywords, cron interval, auto-cover, schedule, daily limit, cron toggle) still load, edit, and save correctly after the layout change
+
 ## [T-005] Upwork monitor controls — cron toggle, time-window scheduling, proposal limit, test-query
 - priority: P1
 - status: done

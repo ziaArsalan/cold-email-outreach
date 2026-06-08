@@ -12,7 +12,23 @@ const { fetchJobRows, updateCoverLetter } = require('../services/upworkSheet')
 const { generateProposal } = require('../services/proposalService')
 const { readConfig, writeConfig, readDailyCount } = require('../services/upworkConfigStore')
 const { fetchJobs } = require('../services/upworkFetch')
+const {
+  verifyCredentials,
+  signToken,
+  requireAuth,
+} = require('../services/authService')
 const config = require('../jobs/config')
+
+// Public login route — issues a JWT for valid credentials
+router.post('/auth/login', (req, res) => {
+  const { email, password } = req.body || {}
+  if (!email || !password || !verifyCredentials(email, password))
+    return res.status(401).json({ success: false, error: 'Invalid credentials' })
+  res.json({ success: true, token: signToken(email) })
+})
+
+// All routes below this line require a valid token
+router.use(requireAuth)
 
 // Global job state
 let jobState = {

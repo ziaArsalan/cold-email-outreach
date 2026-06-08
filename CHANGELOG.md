@@ -4,6 +4,13 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-06-08 — [T-006] Login screen + Monitor Settings UI polish
+- **Added:** Full-page login screen (Devtronics branded, dark theme) gating the entire app — email/password form, JWT auth (8h expiry), token persisted in `localStorage`, auto-redirect to login on 401. New `server/services/authService.js` reads credentials from `AUTH_EMAIL`/`AUTH_PASSWORD`/`JWT_SECRET` env vars only — no hardcoded secrets. All `/api/*` routes except `/api/auth/login` now require a valid Bearer token. Logout button in sidebar footer clears token.
+- **Changed:** Monitor Settings card restructured into a prominent `.cron-control-row` (toggle highlighted at top) + `.settings-fields-grid` 2-column grid (Actor ID, Cron Interval, Daily Limit, Active Hours, Auto-cover, full-width Keywords). All existing settings bindings unchanged.
+- **Area:** both
+- **QA:** PASS — browser-verified: unauthenticated shows login, wrong creds show error, correct creds load dashboard, refresh keeps session, logout clears token, settings card 2-col grid layout confirmed, Save works.
+- **Commit:** T-006
+
 ### 2026-06-08 — [T-005] Upwork monitor controls — cron toggle, time-window, daily limit, test-query
 - **Added:** Cron ON/OFF toggle (runtime, no restart needed); Active Hours scheduling (enable checkbox + start/end HH:MM time inputs, overnight windows supported); Daily Job Limit (counts every appended job, resets each calendar day, persisted in `upworkConfig.json`); "🔍 Test Query" button (runs fetcher only — no Claude, no sheet write, no seen-store update — returns job list in UI). Stats bar 4th tile: "Today's Jobs (count / limit)". `runCycle` now reads config live from `upworkConfigStore` each cycle so all new controls take effect without a server restart.
 - **Area:** both

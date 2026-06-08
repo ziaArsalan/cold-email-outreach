@@ -4,6 +4,38 @@ import './App.css'
 
 const API = 'http://localhost:8080/api'
 
+// Restore token on page load
+const _savedToken = localStorage.getItem('token')
+if (_savedToken)
+  axios.defaults.headers.common['Authorization'] = 'Bearer ' + _savedToken
+
+// Global 401 handler — set by App component
+let _onUnauthorized = null
+
+// Request interceptor — re-reads token each call
+axios.interceptors.request.use((cfg) => {
+  const t = localStorage.getItem('token')
+  if (t) cfg.headers = cfg.headers || {}
+  if (t) cfg.headers['Authorization'] = 'Bearer ' + t
+  return cfg
+})
+
+// Response interceptor — redirect to login on 401 (except login route itself)
+axios.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (
+      err.response?.status === 401 &&
+      !err.config?.url?.endsWith('/auth/login')
+    ) {
+      localStorage.removeItem('token')
+      delete axios.defaults.headers.common['Authorization']
+      if (_onUnauthorized) _onUnauthorized()
+    }
+    return Promise.reject(err)
+  },
+)
+
 const EMAIL_SIGNATURE = ``
 
 // Best Regards,
@@ -23,6 +55,70 @@ const statusColor = (s) => {
   if (s === 'Emailed') return 'status-emailed'
   if (s === 'Failed') return 'status-failed'
   return 'status-pending'
+}
+
+function LoginScreen({ onSuccess }) {
+  const [email, setEmail] = React.useState('')
+  const [password, setPassword] = React.useState('')
+  const [error, setError] = React.useState('')
+  const [loading, setLoading] = React.useState(false)
+
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+    try {
+      const { data } = await axios.post(`${API}/auth/login`, { email, password })
+      localStorage.setItem('token', data.token)
+      axios.defaults.headers.common['Authorization'] = 'Bearer ' + data.token
+      onSuccess()
+    } catch {
+      setError('Invalid email or password')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className='login-screen'>
+      <div className='login-card'>
+        <div className='login-logo'>
+          <span className='logo-d'>D</span>
+          <div className='login-logo-text'>
+            <span>Devtronics</span>
+            <small>Outreach</small>
+          </div>
+        </div>
+        <h2 className='login-title'>Sign in</h2>
+        <form onSubmit={handleLogin} className='login-form'>
+          <div className='login-field'>
+            <label>Email</label>
+            <input
+              type='email'
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder='admin@example.com'
+              required
+              autoFocus
+            />
+          </div>
+          <div className='login-field'>
+            <label>Password</label>
+            <input
+              type='password'
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder='••••••••'
+              required
+            />
+          </div>
+          {error && <div className='login-error'>{error}</div>}
+          <button className='btn-start login-btn' type='submit' disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
 }
 
 export default function App() {
@@ -49,7 +145,22 @@ export default function App() {
   const [draftSettings, setDraftSettings] = useState(null)
   const [upworkTestLoading, setUpworkTestLoading] = useState(false)
   const [upworkTestResults, setUpworkTestResults] = useState(null)
+  const [authed, setAuthed] = useState(!!localStorage.getItem('token'))
   const pollRef = useRef(null)
+
+  const logout = () => {
+    localStorage.removeItem('token')
+    delete axios.defaults.headers.common['Authorization']
+    setAuthed(false)
+  }
+
+  // Register the global 401 handler so interceptor can bounce to login
+  useEffect(() => {
+    _onUnauthorized = () => setAuthed(false)
+    return () => {
+      _onUnauthorized = null
+    }
+  }, [])
 
   const fetchLeads = async () => {
     try {
@@ -259,6 +370,8 @@ export default function App() {
   const emailed = leads.filter((l) => l.status === 'Emailed').length
   const failed = leads.filter((l) => l.status === 'Failed').length
 
+  if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />
+
   return (
     <div className='app'>
       {/* Sidebar */}
@@ -318,6 +431,9 @@ export default function App() {
               <span className='badge-fail'>Failed</span>
             )}
           </div>
+          <button className='btn-ghost logout-btn' onClick={logout}>
+            Logout
+          </button>
         </div>
       </aside>
 
@@ -647,7 +763,9 @@ export default function App() {
             {/* Settings */}
             <div className='card settings-card'>
               <h2>Monitor Settings</h2>
-              <div className='control-group'>
+
+              {/* Cron toggle — prominent, full width */}
+              <div className='cron-control-row'>
                 <label>Cron Status</label>
                 <label className='toggle-switch'>
                   <input
@@ -666,7 +784,9 @@ export default function App() {
                   </span>
                 </label>
               </div>
-              <div className='controls-row'>
+
+              {/* Two-column grid of fields */}
+              <div className='settings-fields-grid'>
                 <div className='control-group'>
                   <label>Actor ID</label>
                   <input
@@ -713,88 +833,79 @@ export default function App() {
                     Max jobs to append per day (0 = unlimited)
                   </span>
                 </div>
-              </div>
-              <div className='control-group' style={{ marginTop: '1rem' }}>
-                <label>Keywords (comma-separated)</label>
-                <textarea
-                  rows={3}
-                  value={draftSettings?.keywords ?? ''}
-                  onChange={(e) =>
-                    setDraftSettings((d) => ({
-                      ...d,
-                      keywords: e.target.value,
-                    }))
-                  }
-                  style={{
-                    background: 'var(--surface2)',
-                    border: '1px solid var(--border)',
-                    borderRadius: '8px',
-                    padding: '0.5rem 0.75rem',
-                    color: 'var(--text)',
-                    fontFamily: "'Space Mono', monospace",
-                    fontSize: '13px',
-                    width: '100%',
-                    outline: 'none',
-                    resize: 'vertical',
-                  }}
-                />
-              </div>
-              <div className='control-group' style={{ marginTop: '1rem' }}>
-                <label>Active Hours</label>
-                <label className='checkbox-row'>
-                  <input
-                    type='checkbox'
-                    checked={draftSettings?.scheduleEnabled ?? false}
-                    onChange={(e) =>
-                      setDraftSettings((s) => ({
-                        ...s,
-                        scheduleEnabled: e.target.checked,
-                      }))
-                    }
-                  />
-                  Enable time window
-                </label>
-                {draftSettings?.scheduleEnabled && (
-                  <div className='time-range-row'>
+                <div className='control-group'>
+                  <label>Active Hours</label>
+                  <label className='checkbox-row'>
                     <input
-                      type='time'
-                      value={draftSettings?.scheduleStart || '09:00'}
+                      type='checkbox'
+                      checked={draftSettings?.scheduleEnabled ?? false}
                       onChange={(e) =>
                         setDraftSettings((s) => ({
                           ...s,
-                          scheduleStart: e.target.value,
+                          scheduleEnabled: e.target.checked,
                         }))
                       }
                     />
-                    <span>to</span>
+                    Enable time window
+                  </label>
+                  {draftSettings?.scheduleEnabled && (
+                    <div className='time-range-row'>
+                      <input
+                        type='time'
+                        value={draftSettings?.scheduleStart || '09:00'}
+                        onChange={(e) =>
+                          setDraftSettings((s) => ({
+                            ...s,
+                            scheduleStart: e.target.value,
+                          }))
+                        }
+                      />
+                      <span>to</span>
+                      <input
+                        type='time'
+                        value={draftSettings?.scheduleEnd || '18:00'}
+                        onChange={(e) =>
+                          setDraftSettings((s) => ({
+                            ...s,
+                            scheduleEnd: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className='control-group'>
+                  <label>Auto-cover</label>
+                  <label className='checkbox-row'>
                     <input
-                      type='time'
-                      value={draftSettings?.scheduleEnd || '18:00'}
+                      type='checkbox'
+                      checked={!!draftSettings?.autoCover}
                       onChange={(e) =>
-                        setDraftSettings((s) => ({
-                          ...s,
-                          scheduleEnd: e.target.value,
+                        setDraftSettings((d) => ({
+                          ...d,
+                          autoCover: e.target.checked,
                         }))
                       }
                     />
-                  </div>
-                )}
-              </div>
-              <div style={{ marginTop: '1rem' }}>
-                <label className='checkbox-row'>
-                  <input
-                    type='checkbox'
-                    checked={!!draftSettings?.autoCover}
+                    Auto-generate cover letter
+                  </label>
+                </div>
+                <div className='control-group full-width'>
+                  <label>Keywords (comma-separated)</label>
+                  <textarea
+                    className='settings-textarea'
+                    rows={3}
+                    value={draftSettings?.keywords ?? ''}
                     onChange={(e) =>
                       setDraftSettings((d) => ({
                         ...d,
-                        autoCover: e.target.checked,
+                        keywords: e.target.value,
                       }))
                     }
                   />
-                  Auto-generate cover letter
-                </label>
+                </div>
               </div>
+
               <div
                 style={{
                   marginTop: '1.25rem',
