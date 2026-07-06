@@ -4,6 +4,12 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-07-06 — [T-007] Outreach V2 foundation — MongoDB, config module, models, Sheets import
+- **Added:** MongoDB (mongoose ^8) foundation for the queue-based Outreach V2 architecture (spec: `.claude/docs/OUTREACH-V2.md`). New `server/config/index.js` (all V2 tunables: Mongo URI, send mode, delay ranges, retry, warm-up week table — distinct from the Upwork `server/jobs/config.js`), `server/db.js` (non-blocking connect, `bufferCommands=false`, 5s timeout), six models (`Lead`, `Mailbox`, `Template`, `Campaign`, `QueuedEmail`, `SendLog`) with spec enums + indexes, and idempotent `npm run import:sheets` (Sheets → Lead upserts by email, status mapping, col-G cached emails → aiIntro/aiSubject, seeds one Mailbox from `SMTP_*` env + one Default template). Server boots and serves all existing Sheets/Upwork routes even when Mongo is down. `.env.example`: `MONGODB_URI` (Atlas SRV placeholder), `QUEUE_WORKER_ENABLED`, `SEND_MODE`.
+- **Area:** server
+- **QA:** PASS (script/API per task — no browser): boot logs `[mongo] connected`; bogus-URI boot still serves `/api/leads` (46 leads) + Upwork settings; double import → 0 duplicates (45 unique leads, statuses `43 contacted / 2 new`, 43 with aiIntro); Mailbox + Default template seeded once.
+- **Commit:** T-007
+
 ### 2026-06-08 — [T-006] Login screen + Monitor Settings UI polish
 - **Added:** Full-page login screen (Devtronics branded, dark theme) gating the entire app — email/password form, JWT auth (8h expiry), token persisted in `localStorage`, auto-redirect to login on 401. New `server/services/authService.js` reads credentials from `AUTH_EMAIL`/`AUTH_PASSWORD`/`JWT_SECRET` env vars only — no hardcoded secrets. All `/api/*` routes except `/api/auth/login` now require a valid Bearer token. Logout button in sidebar footer clears token.
 - **Changed:** Monitor Settings card restructured into a prominent `.cron-control-row` (toggle highlighted at top) + `.settings-fields-grid` 2-column grid (Actor ID, Cron Interval, Daily Limit, Active Hours, Auto-cover, full-width Keywords). All existing settings bindings unchanged.

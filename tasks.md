@@ -27,6 +27,86 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+<!-- ═══ Outreach V2 (queue-based sending) — spec: .claude/docs/OUTREACH-V2.md — do T-007→T-013 in order ═══ -->
+
+## [T-007] Outreach V2 foundation — MongoDB, config module, models, Sheets import
+- priority: P1
+- status: done
+- area: server
+- description: Phase 1 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Models, §Configuration, §Sheets → Mongo import). Add `mongoose`, connect via `MONGODB_URI` at boot (server still starts with a warning if Mongo is down — existing Sheets/Upwork features must not break). Create `server/config/index.js` (all tunables) and models: Lead, Mailbox, Template, Campaign, QueuedEmail, SendLog. Write idempotent `server/scripts/importFromSheets.js` (maps Sheet cols per spec, dedupes by email, seeds one Mailbox from `SMTP_*` env vars + one default Template). Add new env vars to `.env.example` with placeholders. QA via API/script (skip browser QA).
+- acceptance:
+  - [x] `npm run server` connects to Mongo and logs it; with Mongo down the server still boots and existing `/api/leads` + Upwork routes work
+  - [x] Running the import script twice produces no duplicate Leads; statuses map `''→new`, `Emailed→contacted`, `Failed→failed`; col G JSON lands in aiIntro/aiSubject
+  - [x] After import: one Mailbox seeded from env SMTP vars, one default Template exists
+  - [x] `.env.example` gains `MONGODB_URI`, `QUEUE_WORKER_ENABLED`, `SEND_MODE` (placeholders only)
+
+## [T-008] Templates + AI intro-only personalization
+- priority: P1
+- status: todo
+- area: server
+- description: Phase 2 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§AI personalization, §Models→Template). `templateService.render(body, vars)` substituting `{{first_name}} {{company}} {{industry}} {{website}} {{ai_intro}}`. Rework `aiService`: new `generateIntro(lead, aiPrompt)` returning `{ intro, subject }` — intro < 50 words, natural, no buzzwords, mentions something specific about the company (keep web search + JSON-extraction + generate-once caching on the Lead). Template CRUD endpoints (`GET/POST/PUT /api/templates`) and `POST /api/leads/:id/preview` composing template + ai_intro. Keep old `generateEmail` working until T-011 removes its caller.
+- acceptance:
+  - [ ] Template CRUD persists to Mongo; templates are editable without code changes
+  - [ ] Preview endpoint returns a fully rendered email: template body with all vars substituted and the AI intro inline
+  - [ ] Generated intros are < 50 words and stored on the Lead (second preview call makes no AI request)
+  - [ ] Existing `/api/preview` (Sheets flow) still works unchanged
+
+## [T-009] Provider-agnostic SMTP layer + mailbox management
+- priority: P1
+- status: todo
+- area: server
+- description: Phase 3 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Server layout→smtp/, §Models→Mailbox). `SmtpProvider` interface + `NodemailerProvider` + factory keyed on `mailbox.provider` (only `smtp` implemented now — Gmail/M365/Mailgun/SES/Resend slot in later without touching callers). `mailboxService`: round-robin `pickNext(mailboxIds)` skipping paused/limit-reached boxes, counter bump + daily/hourly reset, pause/resume, effective-cap calc incl. warm-up week table from config. Mailbox CRUD + `POST /api/mailboxes/:id/test` (provider verify). Refactor `emailService.sendEmail` to delegate to the provider layer (existing routes keep working).
+- acceptance:
+  - [ ] Mailbox CRUD works; passwords never returned by the API
+  - [ ] Test endpoint verifies a mailbox connection and updates healthStatus/lastError
+  - [ ] Unit-style check: rotation across 3 mailboxes yields 1→2→3→1; a paused or at-limit box is skipped
+  - [ ] Existing `/api/test-smtp` and single-send flow still work via the new provider layer
+
+## [T-010] Email queue + scheduler worker (random delays, rotation, retries, rate-limit pause)
+- priority: P1
+- status: todo
+- area: server
+- description: Phase 4 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Scheduler worker, §SMTP error handling, §Warm-up). `queueService` (enqueue, atomic claimNext via findOneAndUpdate, status transitions) + `workers/schedulerWorker.js`: continuous setTimeout-chained loop, one email per tick, random uniform delay (warm-up 4–8 min / production 2–5 min per `SEND_MODE`, never fixed), mailbox rotation via T-009, retries with backoff to maxRetries, SMTP rate-limit classification (554/too-many → pause mailbox + reschedule, never hot-retry), every attempt logged to SendLog. Worker gated by `QUEUE_WORKER_ENABLED`. Emails are NEVER sent at generation time and NEVER batched.
+- acceptance:
+  - [ ] Enqueued emails sit in `pending`; nothing sends when the worker is disabled
+  - [ ] With worker on (test-shortened delays via config): items go pending→sending→sent one at a time, with visibly different gaps between sends
+  - [ ] Two mailboxes alternate sends; forcing a 554-style error pauses that mailbox, reschedules the item, and the other mailbox continues
+  - [ ] A failing item retries up to maxRetries with growing backoff then lands in `failed` with errorMessage + smtpResponse populated
+  - [ ] SendLog has one entry per attempt with category + refs
+
+## [T-011] Campaigns — CRUD, states, enqueue flow (replaces batch /start)
+- priority: P1
+- status: todo
+- area: both
+- description: Phase 5 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Models→Campaign). Campaign CRUD + state machine (draft/running/paused/completed/stopped) + `POST /api/campaigns/:id/start`: for each targeted Lead, generate ai_intro (T-008), render template, enqueue (T-010) — sending is then entirely the worker's job, respecting campaign dailyLimit, schedule window, and warmupEnabled. Pausing a campaign halts its queue items; stopping cancels pending ones. Minimal client UI: campaigns list + create form (name, template, AI prompt, mailboxes, daily limit, warm-up toggle, schedule) + start/pause/stop buttons. Deprecate the old `/api/start` batch loop (keep endpoint returning a pointer to campaigns, or remove from UI).
+- acceptance:
+  - [ ] Creating a campaign in the UI and clicking Start enqueues one QueuedEmail per pending lead and flips status to Running — no email sends immediately
+  - [ ] Pause stops further sends within one worker tick; Resume continues; Stop cancels remaining pending items
+  - [ ] Campaign respects its schedule window (outside hours: worker skips, logs it)
+  - [ ] Old batch send button is gone from the UI; leads flow only through campaigns
+
+## [T-012] Analytics dashboard + queue/mailbox visibility
+- priority: P2
+- status: todo
+- area: both
+- description: Phase 6 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Analytics). Server: `GET /api/analytics` (sent/pending/failed counts, reply + bounce rates, per-campaign performance, per-mailbox health + today's counts vs limits), `GET /api/queue` (paginated queue with status filter), endpoints to mark a lead replied/bounced manually. Client: dashboard cards (Sent, Pending, Failed, Replies, Bounce %, Reply %), mailbox health table, campaign performance table, live queue view.
+- acceptance:
+  - [ ] Dashboard shows accurate counts matching Mongo state after a test campaign run
+  - [ ] Mailbox table shows each box's health, sentToday vs dailyLimit, and pausedUntil when paused
+  - [ ] Marking a lead as Replied updates reply rate; a bounced send updates bounce rate
+  - [ ] Queue view filters by status and shows scheduledAt/sentAt/error per item
+
+## [T-013] Deliverability polish + sending-domain guide
+- priority: P2
+- status: todo
+- area: server
+- description: Phase 7 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Deliverability). Compose-time enforcement: plain-text by default (HTML only if campaign opts in), warn/block when body has >1 link, images, or attachments; signature appended from template; human-like formatting preserved. Startup/mailbox-test warning when FROM domain ≠ mailbox domain. Write `.claude/docs/DELIVERABILITY.md`: SPF/DKIM/DMARC DNS records for Namecheap Private Email (meetdevtronics.com / devtronics.co), warm-up guidance, unsubscribe-handling note.
+- acceptance:
+  - [ ] Sending a template with 2 links is rejected at enqueue with a clear error
+  - [ ] Sent emails are plain text (no HTML part) unless the campaign explicitly enables HTML
+  - [ ] Mailbox test warns on FROM/domain mismatch
+  - [ ] DELIVERABILITY.md exists with copy-pasteable SPF/DKIM/DMARC record examples
+
 ## [T-006] Login screen + Monitor Settings UI polish
 - priority: P0
 - status: done
