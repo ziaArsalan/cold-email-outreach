@@ -10,7 +10,7 @@ const queuedEmailSchema = new mongoose.Schema(
     body: String,
     status: {
       type: String,
-      enum: ['pending', 'scheduled', 'sending', 'sent', 'failed', 'bounced'],
+      enum: ['pending', 'scheduled', 'sending', 'sent', 'failed', 'bounced', 'cancelled'],
       default: 'pending',
     },
     scheduledAt: Date,

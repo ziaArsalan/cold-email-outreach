@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
 
@@ -55,6 +55,33 @@ const statusColor = (s) => {
   if (s === 'Emailed') return 'status-emailed'
   if (s === 'Failed') return 'status-failed'
   return 'status-pending'
+}
+
+// Default state for the "New Campaign" form.
+const BLANK_CAMPAIGN = {
+  name: '',
+  templateId: '',
+  aiPrompt: '',
+  mailboxIds: [],
+  dailyLimit: 20,
+  warmupEnabled: true,
+  days: ['mon', 'tue', 'wed', 'thu', 'fri'],
+  startTime: '09:00',
+  endTime: '17:00',
+}
+
+const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+// Summarize a campaign's schedule for the list row.
+const scheduleSummary = (schedule) => {
+  if (!schedule) return 'Any time'
+  const days = Array.isArray(schedule.days) ? schedule.days : []
+  const dayPart = days.length ? days.join(', ') : 'every day'
+  const timePart =
+    schedule.startTime && schedule.endTime
+      ? `${schedule.startTime}–${schedule.endTime}`
+      : 'any time'
+  return `${dayPart} · ${timePart}`
 }
 
 function LoginScreen({ onSuccess }) {
@@ -123,9 +150,11 @@ function LoginScreen({ onSuccess }) {
 
 export default function App() {
   const [leads, setLeads] = useState([])
-  const [jobState, setJobState] = useState(null)
-  const [batchSize, setBatchSize] = useState(10)
-  const [delayMs, setDelayMs] = useState(3000)
+  const [campaigns, setCampaigns] = useState([])
+  const [templates, setTemplates] = useState([])
+  const [mailboxes, setMailboxes] = useState([])
+  const [newCampaign, setNewCampaign] = useState(BLANK_CAMPAIGN)
+  const [campaignBusy, setCampaignBusy] = useState(false)
   const [previewLead, setPreviewLead] = useState(null)
   const [preview, setPreview] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -146,7 +175,6 @@ export default function App() {
   const [upworkTestLoading, setUpworkTestLoading] = useState(false)
   const [upworkTestResults, setUpworkTestResults] = useState(null)
   const [authed, setAuthed] = useState(!!localStorage.getItem('token'))
-  const pollRef = useRef(null)
 
   const logout = () => {
     localStorage.removeItem('token')
@@ -169,43 +197,89 @@ export default function App() {
     } catch (e) {}
   }
 
-  const fetchStatus = async () => {
+  useEffect(() => {
+    fetchLeads()
+  }, [])
+
+  // ── Campaigns ──
+  const fetchCampaigns = async () => {
     try {
-      const { data } = await axios.get(`${API}/status`)
-      setJobState(data)
+      const { data } = await axios.get(`${API}/campaigns`)
+      setCampaigns(data.campaigns || [])
     } catch (e) {}
   }
 
-  useEffect(() => {
-    fetchLeads()
-    fetchStatus()
-  }, [])
-
-  // Poll every 2s when job is running
-  useEffect(() => {
-    if (jobState?.running) {
-      pollRef.current = setInterval(() => {
-        fetchStatus()
-        fetchLeads()
-      }, 2000)
-    } else {
-      clearInterval(pollRef.current)
-    }
-    return () => clearInterval(pollRef.current)
-  }, [jobState?.running])
-
-  const startJob = async () => {
-    await axios.post(`${API}/start`, {
-      batchSize: parseInt(batchSize),
-      delayMs: parseInt(delayMs),
-    })
-    fetchStatus()
-    setTimeout(fetchStatus, 1000)
+  const fetchTemplates = async () => {
+    try {
+      const { data } = await axios.get(`${API}/templates`)
+      setTemplates(data.templates || [])
+    } catch (e) {}
   }
 
-  const stopJob = async () => {
-    await axios.post(`${API}/stop`)
-    fetchStatus()
+  const fetchMailboxes = async () => {
+    try {
+      const { data } = await axios.get(`${API}/mailboxes`)
+      setMailboxes(data.mailboxes || [])
+    } catch (e) {}
+  }
+
+  const fetchCampaignsAll = async () => {
+    await Promise.all([fetchCampaigns(), fetchTemplates(), fetchMailboxes()])
+  }
+
+  const createCampaign = async (e) => {
+    e.preventDefault()
+    if (!newCampaign.name.trim()) return
+    setCampaignBusy(true)
+    try {
+      const payload = {
+        name: newCampaign.name.trim(),
+        aiPrompt: newCampaign.aiPrompt,
+        mailboxIds: newCampaign.mailboxIds,
+        dailyLimit: Number(newCampaign.dailyLimit),
+        warmupEnabled: newCampaign.warmupEnabled,
+        schedule: {
+          days: newCampaign.days,
+          startTime: newCampaign.startTime,
+          endTime: newCampaign.endTime,
+        },
+      }
+      if (newCampaign.templateId) payload.templateId = newCampaign.templateId
+      await axios.post(`${API}/campaigns`, payload)
+      setNewCampaign(BLANK_CAMPAIGN)
+      await fetchCampaigns()
+    } catch (err) {
+      alert('Failed to create campaign: ' + (err.response?.data?.error || err.message))
+    } finally {
+      setCampaignBusy(false)
+    }
+  }
+
+  const campaignAction = async (id, action) => {
+    try {
+      await axios.post(`${API}/campaigns/${id}/${action}`)
+      await fetchCampaigns()
+    } catch (err) {
+      alert(`Failed to ${action} campaign: ` + (err.response?.data?.error || err.message))
+    }
+  }
+
+  const toggleCampaignDay = (day) => {
+    setNewCampaign((c) => ({
+      ...c,
+      days: c.days.includes(day)
+        ? c.days.filter((d) => d !== day)
+        : [...c.days, day],
+    }))
+  }
+
+  const toggleCampaignMailbox = (id) => {
+    setNewCampaign((c) => ({
+      ...c,
+      mailboxIds: c.mailboxIds.includes(id)
+        ? c.mailboxIds.filter((m) => m !== id)
+        : [...c.mailboxIds, id],
+    }))
   }
 
   const testSmtp = async () => {
@@ -237,7 +311,6 @@ export default function App() {
     try {
       await axios.post(`${API}/send-email`, { lead: previewLead })
       fetchLeads()
-      fetchStatus()
     } catch (e) {
       alert('Failed to send email: ' + e.message)
     }
@@ -401,6 +474,15 @@ export default function App() {
             <span className='nav-icon'>◉</span> Leads
           </button>
           <button
+            className={tab === 'campaigns' ? 'nav-item active' : 'nav-item'}
+            onClick={() => {
+              setTab('campaigns')
+              fetchCampaignsAll()
+            }}
+          >
+            <span className='nav-icon'>◈</span> Campaigns
+          </button>
+          <button
             className={tab === 'upwork' ? 'nav-item active' : 'nav-item'}
             onClick={() => {
               setTab('upwork')
@@ -467,98 +549,290 @@ export default function App() {
               </div>
             </div>
 
-            {/* Job Controls */}
+            {/* Campaigns now own sending — see the Campaigns tab to launch and
+                control outreach. */}
             <div className='card'>
-              <h2>Job Controls</h2>
-              <div className='controls-row'>
-                <div className='control-group'>
-                  <label>Batch Size</label>
-                  <input
-                    type='number'
-                    value={batchSize}
-                    min={1}
-                    max={100}
-                    onChange={(e) => setBatchSize(e.target.value)}
-                    disabled={jobState?.running}
-                  />
-                </div>
-                <div className='control-group'>
-                  <label>Delay Between Emails (ms)</label>
-                  <input
-                    type='number'
-                    value={delayMs}
-                    min={1000}
-                    step={500}
-                    onChange={(e) => setDelayMs(e.target.value)}
-                    disabled={jobState?.running}
-                  />
-                </div>
-                <div className='control-actions'>
-                  {!jobState?.running ? (
-                    <button
-                      className='btn-start'
-                      onClick={startJob}
-                      disabled={pending === 0}
-                    >
-                      ▶ Start Campaign
-                    </button>
-                  ) : (
-                    <button className='btn-stop' onClick={stopJob}>
-                      ■ Stop
-                    </button>
-                  )}
-                  <button className='btn-ghost' onClick={fetchLeads}>
-                    ↻ Refresh
-                  </button>
-                </div>
+              <h2>Campaigns</h2>
+              <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                Leads flow through campaigns. Create and control them from the
+                Campaigns tab.
+              </p>
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
+                <button
+                  className='btn-start'
+                  onClick={() => {
+                    setTab('campaigns')
+                    fetchCampaignsAll()
+                  }}
+                >
+                  Go to Campaigns
+                </button>
+                <button className='btn-ghost' onClick={fetchLeads}>
+                  ↻ Refresh
+                </button>
               </div>
+            </div>
+          </div>
+        )}
 
-              {/* Progress Bar */}
-              {jobState && (jobState.running || jobState.processed > 0) && (
-                <div className='progress-section'>
-                  <div className='progress-info'>
-                    <span>{jobState.running ? 'Running...' : 'Completed'}</span>
-                    <span>
-                      {jobState.processed} / {jobState.total}
-                    </span>
-                  </div>
-                  <div className='progress-bar'>
-                    <div
-                      className='progress-fill'
-                      style={{
-                        width:
-                          jobState.total > 0
-                            ? `${(jobState.processed / jobState.total) * 100}%`
-                            : '0%',
-                      }}
-                    />
-                  </div>
-                  <div className='progress-stats'>
-                    <span className='ps-success'>
-                      ✓ {jobState.success} sent
-                    </span>
-                    <span className='ps-fail'>✗ {jobState.failed} failed</span>
-                  </div>
+        {/* ── CAMPAIGNS TAB ── */}
+        {tab === 'campaigns' && (
+          <div className='tab-content'>
+            <div className='page-header'>
+              <h1>Campaigns</h1>
+              <p>Launch and control AI-personalized outreach</p>
+            </div>
+
+            {/* Existing campaigns */}
+            <div className='card'>
+              <div
+                className='bulk-actions'
+                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2 style={{ margin: 0 }}>Your Campaigns</h2>
+                <button className='btn-ghost' onClick={fetchCampaigns}>
+                  ↻ Refresh
+                </button>
+              </div>
+              {campaigns.length === 0 ? (
+                <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                  No campaigns yet. Create one below.
+                </p>
+              ) : (
+                <div className='campaign-list'>
+                  {campaigns.map((c) => {
+                    const counts = c.counts || {}
+                    return (
+                      <div key={c._id} className='campaign-row'>
+                        <div className='campaign-main'>
+                          <div className='campaign-title'>
+                            <span className='campaign-name'>{c.name}</span>
+                            <span
+                              className={`status-badge badge-${c.status}`}
+                            >
+                              {c.status}
+                            </span>
+                          </div>
+                          <div className='campaign-meta'>
+                            <span>pending {counts.pending || 0}</span>
+                            <span>sent {counts.sent || 0}</span>
+                            <span>cancelled {counts.cancelled || 0}</span>
+                            <span>limit {c.dailyLimit || 0}/day</span>
+                            <span>
+                              warm-up {c.warmupEnabled ? 'on' : 'off'}
+                            </span>
+                            <span>{scheduleSummary(c.schedule)}</span>
+                          </div>
+                        </div>
+                        <div className='campaign-actions'>
+                          {c.status === 'draft' && (
+                            <button
+                              className='btn-start'
+                              onClick={() => campaignAction(c._id, 'start')}
+                            >
+                              ▶ Start
+                            </button>
+                          )}
+                          {c.status === 'running' && (
+                            <>
+                              <button
+                                className='btn-ghost'
+                                onClick={() => campaignAction(c._id, 'pause')}
+                              >
+                                ❚❚ Pause
+                              </button>
+                              <button
+                                className='btn-stop'
+                                onClick={() => campaignAction(c._id, 'stop')}
+                              >
+                                ■ Stop
+                              </button>
+                            </>
+                          )}
+                          {c.status === 'paused' && (
+                            <>
+                              <button
+                                className='btn-start'
+                                onClick={() => campaignAction(c._id, 'resume')}
+                              >
+                                ▶ Resume
+                              </button>
+                              <button
+                                className='btn-stop'
+                                onClick={() => campaignAction(c._id, 'stop')}
+                              >
+                                ■ Stop
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
 
-            {/* Activity Log */}
-            {jobState?.logs?.length > 0 && (
-              <div className='card log-card'>
-                <h2>Activity Log</h2>
-                <div className='log-list'>
-                  {jobState.logs.map((log, i) => (
-                    <div key={i} className={`log-entry log-${log.type}`}>
-                      <span className='log-time'>
-                        {new Date(log.time).toLocaleTimeString()}
+            {/* New campaign */}
+            <div className='card'>
+              <h2>New Campaign</h2>
+              <form onSubmit={createCampaign}>
+                <div className='settings-fields-grid'>
+                  <div className='control-group'>
+                    <label>Name</label>
+                    <input
+                      type='text'
+                      value={newCampaign.name}
+                      onChange={(e) =>
+                        setNewCampaign((c) => ({ ...c, name: e.target.value }))
+                      }
+                      placeholder='Q3 SaaS founders'
+                      required
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>Template</label>
+                    <select
+                      value={newCampaign.templateId}
+                      onChange={(e) =>
+                        setNewCampaign((c) => ({
+                          ...c,
+                          templateId: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value=''>Select a template…</option>
+                      {templates.map((t) => (
+                        <option key={t._id} value={t._id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className='control-group'>
+                    <label>Daily Limit</label>
+                    <input
+                      type='number'
+                      min='0'
+                      value={newCampaign.dailyLimit}
+                      onChange={(e) =>
+                        setNewCampaign((c) => ({
+                          ...c,
+                          dailyLimit: e.target.value,
+                        }))
+                      }
+                    />
+                    <span className='field-note'>0 = unlimited</span>
+                  </div>
+                  <div className='control-group'>
+                    <label>Warm-up</label>
+                    <label className='checkbox-row'>
+                      <input
+                        type='checkbox'
+                        checked={newCampaign.warmupEnabled}
+                        onChange={(e) =>
+                          setNewCampaign((c) => ({
+                            ...c,
+                            warmupEnabled: e.target.checked,
+                          }))
+                        }
+                      />
+                      Enable warm-up ramp
+                    </label>
+                  </div>
+                  <div className='control-group full-width'>
+                    <label>AI Prompt (optional)</label>
+                    <textarea
+                      className='settings-textarea'
+                      rows={3}
+                      value={newCampaign.aiPrompt}
+                      onChange={(e) =>
+                        setNewCampaign((c) => ({
+                          ...c,
+                          aiPrompt: e.target.value,
+                        }))
+                      }
+                      placeholder='Extra instructions for the personalized intro…'
+                    />
+                  </div>
+                  <div className='control-group full-width'>
+                    <label>Mailboxes</label>
+                    {mailboxes.length === 0 ? (
+                      <span className='field-note'>
+                        No mailboxes configured.
                       </span>
-                      <span className='log-msg'>{log.message}</span>
+                    ) : (
+                      <div className='checkbox-list'>
+                        {mailboxes.map((m) => (
+                          <label key={m._id} className='checkbox-row'>
+                            <input
+                              type='checkbox'
+                              checked={newCampaign.mailboxIds.includes(m._id)}
+                              onChange={() => toggleCampaignMailbox(m._id)}
+                            />
+                            {m.email}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className='control-group full-width'>
+                    <label>Schedule Days</label>
+                    <div className='day-toggle-row'>
+                      {WEEKDAYS.map((d) => (
+                        <button
+                          type='button'
+                          key={d}
+                          className={
+                            newCampaign.days.includes(d)
+                              ? 'day-toggle active'
+                              : 'day-toggle'
+                          }
+                          onClick={() => toggleCampaignDay(d)}
+                        >
+                          {d}
+                        </button>
+                      ))}
                     </div>
-                  ))}
+                  </div>
+                  <div className='control-group'>
+                    <label>Start Time</label>
+                    <input
+                      type='time'
+                      value={newCampaign.startTime}
+                      onChange={(e) =>
+                        setNewCampaign((c) => ({
+                          ...c,
+                          startTime: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>End Time</label>
+                    <input
+                      type='time'
+                      value={newCampaign.endTime}
+                      onChange={(e) =>
+                        setNewCampaign((c) => ({
+                          ...c,
+                          endTime: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
+                <div style={{ marginTop: '1.25rem' }}>
+                  <button
+                    className='btn-start'
+                    type='submit'
+                    disabled={campaignBusy || !newCampaign.name.trim()}
+                  >
+                    {campaignBusy ? 'Creating…' : '+ Create Campaign'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 

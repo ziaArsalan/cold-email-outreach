@@ -23,8 +23,9 @@ const {
 } = require('../services/authService')
 const config = require('../jobs/config')
 const mongoose = require('mongoose')
-const { Lead, Template, Mailbox } = require('../models')
+const { Lead, Template, Mailbox, Campaign, QueuedEmail } = require('../models')
 const { render } = require('../services/templateService')
+const campaignService = require('../services/campaignService')
 const {
   sanitize,
   pause,
@@ -116,106 +117,11 @@ router.post('/test-smtp', async (req, res) => {
   }
 })
 
-// POST /api/start — start the automation job
-router.post('/start', async (req, res) => {
-  if (jobState.running) {
-    return res
-      .status(400)
-      .json({ success: false, error: 'Job already running' })
-  }
-
-  const { batchSize = 10, delayMs = 3000 } = req.body
-
-  // Reset state
-  jobState = {
-    running: true,
-    total: 0,
-    processed: 0,
-    success: 0,
-    failed: 0,
-    skipped: 0,
-    logs: [],
-    startedAt: new Date().toISOString(),
-    finishedAt: null,
-  }
-
-  res.json({ success: true, message: 'Job started' })
-
-  // Run job in background
-  ;(async () => {
-    try {
-      addLog('info', 'Fetching pending leads from Google Sheets...')
-      const leads = await fetchPendingLeads()
-      jobState.total = leads.length
-
-      if (leads.length === 0) {
-        addLog('info', 'No pending leads found. All done!')
-        jobState.running = false
-        jobState.finishedAt = new Date().toISOString()
-        return
-      }
-
-      addLog('info', `Found ${leads.length} pending leads. Starting...`)
-
-      // Process in batches
-      const batch = leads.slice(0, batchSize)
-
-      for (const lead of batch) {
-        try {
-          addLog('info', `Processing: ${lead.name} (${lead.email})`)
-
-          // Step 1: Use cached email if already generated, otherwise call AI
-          let subject, body
-          if (lead.generatedEmail) {
-            ;({ subject, body } = lead.generatedEmail)
-            addLog('info', `Using cached email for ${lead.name} (no AI call)`)
-          } else {
-            addLog('info', `Generating email for ${lead.name}...`)
-            ;({ subject, body } = await generateEmail(lead))
-            // Save to sheet so it is never regenerated
-            await saveGeneratedEmail(lead.rowIndex, { subject, body })
-          }
-
-          // Step 2: Send email
-          addLog('info', `Sending email to ${lead.email}...`)
-          await sendEmail({ to: lead.email, subject, body })
-
-          // Step 3: Update sheet status
-          await updateLeadStatus(lead.rowIndex, 'Emailed')
-
-          jobState.success++
-          addLog(
-            'success',
-            `Emailed ${lead.name} at ${lead.email} — Subject: "${subject}"`,
-          )
-        } catch (err) {
-          jobState.failed++
-          addLog('error', `Failed for ${lead.email}: ${err.message}`)
-          // Mark as failed in sheet so we know
-          try {
-            await updateLeadStatus(lead.rowIndex, 'Failed')
-          } catch (_) {}
-        }
-
-        jobState.processed++
-
-        // Delay between emails to avoid rate limits
-        if (jobState.processed < batch.length) {
-          await new Promise((r) => setTimeout(r, delayMs))
-        }
-      }
-
-      addLog(
-        'info',
-        `Job complete. Sent: ${jobState.success} | Failed: ${jobState.failed}`,
-      )
-    } catch (err) {
-      addLog('error', `Job crashed: ${err.message}`)
-    } finally {
-      jobState.running = false
-      jobState.finishedAt = new Date().toISOString()
-    }
-  })()
+// POST /api/start — DEPRECATED. Leads now flow through campaigns (/api/campaigns).
+router.post('/start', (req, res) => {
+  res
+    .status(410)
+    .json({ success: false, error: 'Deprecated — use campaigns (/api/campaigns)' })
 })
 
 // POST /api/send-email — send email for a single lead
@@ -853,5 +759,182 @@ router.post('/mailboxes/:id/resume', async (req, res) => {
     res.status(500).json({ success: false, error: err.message })
   }
 })
+
+// ── Campaigns (Mongo-backed outreach campaigns) ──
+
+const HHMM = /^\d{2}:\d{2}$/
+
+// Validate campaign fields. Returns an error string, or null when valid.
+// `partial` = update mode where name may be omitted.
+const validateCampaign = (body, partial) => {
+  if (!partial || body.name !== undefined)
+    if (typeof body.name !== 'string' || !body.name.trim())
+      return 'name must be a non-empty string'
+  if (body.aiPrompt !== undefined && typeof body.aiPrompt !== 'string')
+    return 'aiPrompt must be a string'
+  if (body.mailboxIds !== undefined && !Array.isArray(body.mailboxIds))
+    return 'mailboxIds must be an array'
+  if (
+    body.dailyLimit !== undefined &&
+    (typeof body.dailyLimit !== 'number' || body.dailyLimit < 0)
+  )
+    return 'dailyLimit must be a number >= 0'
+  if (body.warmupEnabled !== undefined && typeof body.warmupEnabled !== 'boolean')
+    return 'warmupEnabled must be a boolean'
+  if (body.schedule !== undefined) {
+    const s = body.schedule
+    if (typeof s !== 'object' || s === null) return 'schedule must be an object'
+    if (s.days !== undefined && !Array.isArray(s.days))
+      return 'schedule.days must be an array'
+    if (s.startTime !== undefined && !HHMM.test(s.startTime))
+      return 'schedule.startTime must be HH:MM'
+    if (s.endTime !== undefined && !HHMM.test(s.endTime))
+      return 'schedule.endTime must be HH:MM'
+  }
+  return null
+}
+
+// Pull only the settable fields off a request body.
+const campaignFields = (body) => {
+  const out = {}
+  const fields = [
+    'name',
+    'templateId',
+    'aiPrompt',
+    'mailboxIds',
+    'dailyLimit',
+    'warmupEnabled',
+    'schedule',
+  ]
+  for (const f of fields) if (body[f] !== undefined) out[f] = body[f]
+  return out
+}
+
+// GET /api/campaigns — all campaigns, newest first, with per-campaign queue counts
+router.get('/campaigns', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const [docs, counts] = await Promise.all([
+      Campaign.find().sort({ createdAt: -1 }),
+      campaignService.countsByCampaign(),
+    ])
+    const campaigns = docs.map((c) => ({
+      ...c.toObject(),
+      counts: counts[String(c._id)] || {},
+    }))
+    res.json({ success: true, campaigns })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/campaigns — create a draft campaign
+router.post('/campaigns', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const invalid = validateCampaign(req.body || {}, false)
+    if (invalid)
+      return res.status(400).json({ success: false, error: invalid })
+
+    const campaign = await Campaign.create({
+      ...campaignFields(req.body || {}),
+      status: 'draft',
+    })
+    res.status(201).json({ success: true, campaign })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// PUT /api/campaigns/:id — edit a draft campaign (only while draft)
+router.put('/campaigns/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const invalid = validateCampaign(req.body || {}, true)
+    if (invalid)
+      return res.status(400).json({ success: false, error: invalid })
+
+    let campaign
+    try {
+      campaign = await Campaign.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res
+          .status(404)
+          .json({ success: false, error: 'Campaign not found' })
+      throw err
+    }
+    if (!campaign)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Campaign not found' })
+    if (campaign.status !== 'draft')
+      return res
+        .status(400)
+        .json({ success: false, error: 'Only draft campaigns can be edited' })
+
+    Object.assign(campaign, campaignFields(req.body || {}))
+    await campaign.save()
+    res.json({ success: true, campaign })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// Map a campaignService transition error to the right HTTP status.
+const campaignActionError = (res, err) => {
+  if (err.status === 400)
+    return res.status(400).json({ success: false, error: err.message })
+  return res.status(500).json({ success: false, error: err.message })
+}
+
+// POST /api/campaigns/:id/start — enqueue emails + flip to running
+router.post('/campaigns/:id/start', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { leadIds } = req.body || {}
+    const { enqueued } = await campaignService.start(req.params.id, { leadIds })
+    const campaign = await Campaign.findById(req.params.id)
+    res.json({ success: true, enqueued, campaign })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res
+        .status(404)
+        .json({ success: false, error: 'Campaign not found' })
+    campaignActionError(res, err)
+  }
+})
+
+// POST /api/campaigns/:id/pause | /resume | /stop — lifecycle transitions
+for (const action of ['pause', 'resume', 'stop']) {
+  router.post(`/campaigns/:id/${action}`, async (req, res) => {
+    if (!dbReady())
+      return res
+        .status(503)
+        .json({ success: false, error: 'Database unavailable' })
+    try {
+      const campaign = await campaignService[action](req.params.id)
+      res.json({ success: true, campaign })
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res
+          .status(404)
+          .json({ success: false, error: 'Campaign not found' })
+      campaignActionError(res, err)
+    }
+  })
+}
 
 module.exports = router

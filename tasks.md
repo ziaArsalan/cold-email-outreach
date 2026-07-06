@@ -76,14 +76,14 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-011] Campaigns — CRUD, states, enqueue flow (replaces batch /start)
 - priority: P1
-- status: todo
+- status: done
 - area: both
 - description: Phase 5 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Models→Campaign). Campaign CRUD + state machine (draft/running/paused/completed/stopped) + `POST /api/campaigns/:id/start`: for each targeted Lead, generate ai_intro (T-008), render template, enqueue (T-010) — sending is then entirely the worker's job, respecting campaign dailyLimit, schedule window, and warmupEnabled. Pausing a campaign halts its queue items; stopping cancels pending ones. Minimal client UI: campaigns list + create form (name, template, AI prompt, mailboxes, daily limit, warm-up toggle, schedule) + start/pause/stop buttons. Deprecate the old `/api/start` batch loop (keep endpoint returning a pointer to campaigns, or remove from UI).
 - acceptance:
-  - [ ] Creating a campaign in the UI and clicking Start enqueues one QueuedEmail per pending lead and flips status to Running — no email sends immediately
-  - [ ] Pause stops further sends within one worker tick; Resume continues; Stop cancels remaining pending items
-  - [ ] Campaign respects its schedule window (outside hours: worker skips, logs it)
-  - [ ] Old batch send button is gone from the UI; leads flow only through campaigns
+  - [x] Creating a campaign in the UI and clicking Start enqueues one QueuedEmail per pending lead and flips status to Running — no email sends immediately
+  - [x] Pause stops further sends within one worker tick; Resume continues; Stop cancels remaining pending items
+  - [x] Campaign respects its schedule window (outside hours: worker skips, logs it)
+  - [x] Old batch send button is gone from the UI; leads flow only through campaigns
 
 ## [T-012] Analytics dashboard + queue/mailbox visibility
 - priority: P2

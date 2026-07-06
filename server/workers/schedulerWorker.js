@@ -4,8 +4,9 @@
 // itself stays testable (processOne is called directly by the acceptance test).
 
 const config = require('../config')
-const { Lead, Mailbox } = require('../models')
+const { Lead, Mailbox, Campaign, QueuedEmail } = require('../models')
 const mailboxService = require('../services/mailboxService')
+const campaignService = require('../services/campaignService')
 const {
   claimNext,
   markSent,
@@ -33,12 +34,45 @@ const processOne = async (deps = {}) => {
     const item = await claimNext(now())
     if (!item) return { idle: true }
 
-    // Pick the sending mailbox. When the item pins a mailbox, rotate within just
-    // that one; otherwise rotate across every active mailbox. T-011 will pass
-    // campaign mailboxIds via item.mailboxId or a campaign lookup later.
+    // Campaign gating: only send when the owning campaign is running, inside its
+    // schedule window, and under its daily cap. Otherwise requeue the item.
+    let campaign = null
+    if (item.campaignId) {
+      const refs = { queueId: item._id, campaignId: item.campaignId }
+      campaign = await Campaign.findById(item.campaignId)
+
+      if (!campaign || campaign.status !== 'running') {
+        await reschedule(item, { delayMs: config.workerTickGuardMs })
+        await log('info', 'campaign', 'skip — campaign not running', refs)
+        return { requeued: true }
+      }
+
+      if (!campaignService.isWithinWindow(campaign, now())) {
+        await reschedule(item, { delayMs: config.workerIdleMs })
+        await log('info', 'campaign', 'skip — outside schedule window', refs)
+        return { requeued: true }
+      }
+
+      if (
+        campaign.dailyLimit > 0 &&
+        (await campaignService.sentTodayCount(campaign._id, now())) >=
+          campaign.dailyLimit
+      ) {
+        const midnight = new Date(now())
+        midnight.setHours(24, 0, 0, 0)
+        await reschedule(item, { delayMs: midnight.getTime() - now().getTime() })
+        await log('info', 'campaign', 'skip — daily limit reached', refs)
+        return { requeued: true }
+      }
+    }
+
+    // Pick the sending mailbox. Item pins a mailbox → rotate within just that
+    // one; else campaign mailboxIds → rotate across those; else every active box.
     let mailboxIds
     if (item.mailboxId) {
       mailboxIds = [item.mailboxId]
+    } else if (campaign && campaign.mailboxIds && campaign.mailboxIds.length) {
+      mailboxIds = campaign.mailboxIds
     } else {
       const active = await Mailbox.find({ active: true }).select('_id')
       mailboxIds = active.map((m) => m._id)
@@ -87,6 +121,21 @@ const processOne = async (deps = {}) => {
         lead.status = 'contacted'
         lead.lastContactDate = new Date()
         await lead.save()
+      } catch (_) {}
+
+      // Best-effort campaign completion — when nothing is left in flight, mark it
+      // completed. Must never fail the send.
+      try {
+        if (item.campaignId && campaign && campaign.status === 'running') {
+          const remaining = await QueuedEmail.countDocuments({
+            campaignId: item.campaignId,
+            status: { $in: ['pending', 'scheduled', 'sending'] },
+          })
+          if (remaining === 0) {
+            campaign.status = 'completed'
+            await campaign.save()
+          }
+        }
       } catch (_) {}
 
       await log('info', 'smtp', 'sent', {
