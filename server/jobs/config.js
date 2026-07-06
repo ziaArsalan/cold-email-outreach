@@ -3,7 +3,7 @@
 //
 // Precedence for each value: env var → stored UI config → hardcoded default.
 
-const stored = require('../services/upworkConfigStore').readConfig();
+const stored = require('../services/upworkConfigStore').readConfig()
 
 const DEFAULT_KEYWORDS = [
   'GoHighLevel',
@@ -14,7 +14,7 @@ const DEFAULT_KEYWORDS = [
   'Next.js developer',
   'React Node.js SaaS',
   'white label SaaS',
-];
+]
 
 const KEYWORDS = (
   process.env.UPWORK_KEYWORDS ||
@@ -23,12 +23,20 @@ const KEYWORDS = (
 )
   .split(',')
   .map((k) => k.trim())
-  .filter(Boolean);
+  .filter(Boolean)
 
 module.exports = {
   KEYWORDS,
-  CRON_INTERVAL: process.env.CRON_INTERVAL || stored.cronInterval || '*/10 * * * *',
-  ACTOR_ID: process.env.APIFY_ACTOR_ID || stored.actorId || 'neatrat/upwork-job-scraper',
+  CRON_INTERVAL:
+    process.env.CRON_INTERVAL || stored.cronInterval || '*/10 * * * *',
+  // Enable or disable the cron scheduler. Default: off until enabled from UI/admin.
+  CRON_ENABLED: process.env.UPWORK_CRON_ENABLED
+    ? process.env.UPWORK_CRON_ENABLED === 'true'
+    : (stored.cronEnabled ?? false),
+  ACTOR_ID:
+    process.env.APIFY_ACTOR_ID ||
+    stored.actorId ||
+    'neatrat/upwork-job-scraper',
   AUTO_COVER: process.env.UPWORK_AUTO_COVER
     ? process.env.UPWORK_AUTO_COVER === 'true'
     : (stored.autoCover ?? true),
@@ -36,6 +44,7 @@ module.exports = {
   APIFY_API_TOKEN: process.env.APIFY_API_TOKEN,
   APIFY_MAX_RESULTS: Number(process.env.APIFY_MAX_RESULTS) || 25,
   // Jobs sheet is separate from the leads sheet; falls back to the leads sheet id.
-  JOBS_SHEET_ID: process.env.GOOGLE_JOBS_SHEET_ID || process.env.GOOGLE_SHEET_ID,
+  JOBS_SHEET_ID:
+    process.env.GOOGLE_JOBS_SHEET_ID || process.env.GOOGLE_SHEET_ID,
   JOBS_TAB: process.env.UPWORK_JOBS_TAB || 'Upwork',
-};
+}

@@ -64,15 +64,15 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-010] Email queue + scheduler worker (random delays, rotation, retries, rate-limit pause)
 - priority: P1
-- status: todo
+- status: done
 - area: server
 - description: Phase 4 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Scheduler worker, §SMTP error handling, §Warm-up). `queueService` (enqueue, atomic claimNext via findOneAndUpdate, status transitions) + `workers/schedulerWorker.js`: continuous setTimeout-chained loop, one email per tick, random uniform delay (warm-up 4–8 min / production 2–5 min per `SEND_MODE`, never fixed), mailbox rotation via T-009, retries with backoff to maxRetries, SMTP rate-limit classification (554/too-many → pause mailbox + reschedule, never hot-retry), every attempt logged to SendLog. Worker gated by `QUEUE_WORKER_ENABLED`. Emails are NEVER sent at generation time and NEVER batched.
 - acceptance:
-  - [ ] Enqueued emails sit in `pending`; nothing sends when the worker is disabled
-  - [ ] With worker on (test-shortened delays via config): items go pending→sending→sent one at a time, with visibly different gaps between sends
-  - [ ] Two mailboxes alternate sends; forcing a 554-style error pauses that mailbox, reschedules the item, and the other mailbox continues
-  - [ ] A failing item retries up to maxRetries with growing backoff then lands in `failed` with errorMessage + smtpResponse populated
-  - [ ] SendLog has one entry per attempt with category + refs
+  - [x] Enqueued emails sit in `pending`; nothing sends when the worker is disabled
+  - [x] With worker on (test-shortened delays via config): items go pending→sending→sent one at a time, with visibly different gaps between sends
+  - [x] Two mailboxes alternate sends; forcing a 554-style error pauses that mailbox, reschedules the item, and the other mailbox continues
+  - [x] A failing item retries up to maxRetries with growing backoff then lands in `failed` with errorMessage + smtpResponse populated
+  - [x] SendLog has one entry per attempt with category + refs
 
 ## [T-011] Campaigns — CRUD, states, enqueue flow (replaces batch /start)
 - priority: P1

@@ -24,7 +24,8 @@ Durable, machine-independent knowledge for this project. Committed to the repo s
 
 ## Approval automation (grows over time)
 When a class of decision has been approved enough times that it's safe to auto-approve, record the rule here and the workflow will stop asking for it.
-- _(none yet — all gates currently ask the human)_
+- **2026-07-06** — **Outreach V2 batch (T-010→T-013): auto-approve plans AND bug-fixes** (user-approved for the whole batch). QA still gates shipping — a failing build is never pushed; a `blocked` task still stops the batch and reports.
+- **2026-07-06** — **QA emails: real sends allowed without asking, but ONLY to the user's own addresses** (`zia20isys@gmail.com` / the seeded mailbox's own account). Never send QA email to real leads; never mass-send. (Precedent: T-009 single-send approval.)
 
 ## Conventions
 - Frontend is a single `client/src/App.js` (Create React App). Styles in `App.css`.
@@ -44,4 +45,5 @@ When a class of decision has been approved enough times that it's safe to auto-a
 - **Google Sheets tab name is literal:** `UPWORK_JOBS_TAB` (or the default `Upwork`) must match the exact tab name in the spreadsheet. `Unable to parse range` = tab doesn't exist — create it first or set the env var to the real tab name (e.g. `Sheet1`).
 - **New Google Sheets must be explicitly shared** with the service account (`GOOGLE_SERVICE_ACCOUNT_EMAIL`) as Editor, even if another sheet in the same Drive is already shared. Permissions are per-file, not per-account.
 - **Local `mongosh` is broken** on this machine (Homebrew icu4c version mismatch — dylib load error). `mongod` itself runs fine via `brew services`. Inspect the DB with a Node one-liner using `server/models` + mongoose instead of mongosh.
+- **Orphaned `sending` items (T-010)**: if the server dies mid-send, the claimed QueuedEmail stays in `sending` forever — there is no stale-claim sweeper yet. Manual fix: set the item back to `pending` (scheduledAt null). Candidate improvement for a future task: on worker start, requeue `sending` items older than N minutes.
 - _(add traps as you hit them)_

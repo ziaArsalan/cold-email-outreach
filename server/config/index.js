@@ -29,6 +29,7 @@ module.exports = {
 
   smtpTimeoutMs: Number(process.env.SMTP_TIMEOUT_MS) || 30000,
   workerTickGuardMs: Number(process.env.WORKER_TICK_GUARD_MS) || 5000,
+  workerIdleMs: Number(process.env.WORKER_IDLE_MS) || 30000,
 
   warmupWeeks: [
     { week: 1, min: 5, max: 10 },
