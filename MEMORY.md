@@ -35,6 +35,7 @@ When a class of decision has been approved enough times that it's safe to auto-a
 - Upwork settings persisted in `server/data/upworkConfig.json` (gitignored) via `upworkConfigStore.js`. Config fallback order: env var → stored JSON → hardcoded default.
 - Cron schedule is registered once at boot — **interval** changes still require a server restart. All other runtime settings (cronEnabled, autoCover, keywords, scheduleEnabled/Start/End, dailyLimit) are read live from `upworkConfigStore.readConfig()` at the start of each `runCycle` — changes take effect on the next tick without restart.
 - The React client API base is hardcoded to `http://localhost:8080/api` (not the proxy). The proxy in `client/package.json` is stale (`localhost:5000`) — do not rely on it.
+- **Mailbox passwords are `select: false`** (T-009): any code that needs to authenticate SMTP must query with `.select('+password')` (see `mailboxService.pickNext` and the `/api/mailboxes/:id/test` route). API responses additionally pass through `mailboxService.sanitize()`. Mailbox rotation fairness is the persisted `lastUsedAt` field (LRU sort), not an in-memory cursor — survives restarts.
 
 ## Gotchas
 - Client proxies API calls to `http://localhost:5000` (see `client/package.json` `proxy`). The server must be running for the UI to work.

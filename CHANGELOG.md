@@ -4,6 +4,13 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-07-06 — [T-009] Provider-agnostic SMTP layer + mailbox management
+- **Added:** `server/services/smtp/` — `NodemailerProvider` (send/verify from a Mailbox doc, connection/greeting/socket timeouts from `config.smtpTimeoutMs` so bad hosts fail in ~5s instead of hanging) + `providerFor(mailbox)` factory (only `smtp` implemented; Gmail/M365/Mailgun/SES/Resend throw "not implemented yet" and slot in later without touching callers). `server/services/mailboxService.js` — LRU rotation via persisted `lastUsedAt` (`pickNext` skips paused/error/at-limit boxes, auto-unpauses when `pausedUntil` elapses), daily/hourly counter rollover, warm-up week cap (`effectiveDailyCap`), `recordSend`, `pause`/`resume`, `sanitize`. New auth-gated routes: `GET/POST /api/mailboxes`, `PUT /api/mailboxes/:id` (password only overwritten when non-empty; never returned — `select:false` on the schema + sanitize), `POST /api/mailboxes/:id/test|pause|resume`. `server/scripts/testRotation.js` for the rotation acceptance check.
+- **Changed:** `emailService.sendEmail`/`verifyConnection` now delegate to the provider layer via a transient env-based mailbox — same signatures, zero caller changes. `Mailbox` model: `password` is `select:false`, new `lastUsedAt`.
+- **Area:** server
+- **QA:** PASS (API/script): `ROTATION PASS` (1→2→3→1, paused + at-limit skipped); CRUD 200/201/400 with zero password leakage in any response; bad-host test → `healthStatus:error` + lastError in 5.0s (no hang), seeded box → healthy; `/api/test-smtp` OK; one real email sent through the new layer (`250 2.0.0 Ok: queued`).
+- **Commit:** T-009
+
 ### 2026-07-06 — [T-008] Templates + AI intro-only personalization
 - **Added:** `server/services/templateService.js` — pure `render(body, vars)` for `{{first_name}} {{last_name}} {{company}} {{industry}} {{website}} {{ai_intro}}` (missing vars → empty string) + `extractVars()`. `aiService.generateIntro(lead, aiPrompt)` — AI now writes only a <50-word personalized opener (+ stored-but-unused subject; the **rendered template subject** drives previews per user decision) with natural-writing/no-buzzword/specific-company-detail rules; web search + JSON extraction + `claude-sonnet-4-6` reused from `generateEmail` (which stays untouched for the legacy flow until T-011). New auth-gated routes: `GET/POST /api/templates`, `PUT /api/templates/:id`, `POST /api/leads/:id/preview` (generates + caches intro on the Lead only when `aiIntro` empty; legacy imported intros count as cache). Mongo-down → clean 503 via readyState guard.
 - **Area:** server

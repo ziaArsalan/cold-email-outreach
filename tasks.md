@@ -53,14 +53,14 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-009] Provider-agnostic SMTP layer + mailbox management
 - priority: P1
-- status: todo
+- status: done
 - area: server
 - description: Phase 3 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Server layout→smtp/, §Models→Mailbox). `SmtpProvider` interface + `NodemailerProvider` + factory keyed on `mailbox.provider` (only `smtp` implemented now — Gmail/M365/Mailgun/SES/Resend slot in later without touching callers). `mailboxService`: round-robin `pickNext(mailboxIds)` skipping paused/limit-reached boxes, counter bump + daily/hourly reset, pause/resume, effective-cap calc incl. warm-up week table from config. Mailbox CRUD + `POST /api/mailboxes/:id/test` (provider verify). Refactor `emailService.sendEmail` to delegate to the provider layer (existing routes keep working).
 - acceptance:
-  - [ ] Mailbox CRUD works; passwords never returned by the API
-  - [ ] Test endpoint verifies a mailbox connection and updates healthStatus/lastError
-  - [ ] Unit-style check: rotation across 3 mailboxes yields 1→2→3→1; a paused or at-limit box is skipped
-  - [ ] Existing `/api/test-smtp` and single-send flow still work via the new provider layer
+  - [x] Mailbox CRUD works; passwords never returned by the API
+  - [x] Test endpoint verifies a mailbox connection and updates healthStatus/lastError
+  - [x] Unit-style check: rotation across 3 mailboxes yields 1→2→3→1; a paused or at-limit box is skipped
+  - [x] Existing `/api/test-smtp` and single-send flow still work via the new provider layer
 
 ## [T-010] Email queue + scheduler worker (random delays, rotation, retries, rate-limit pause)
 - priority: P1

@@ -23,8 +23,14 @@ const {
 } = require('../services/authService')
 const config = require('../jobs/config')
 const mongoose = require('mongoose')
-const { Lead, Template } = require('../models')
+const { Lead, Template, Mailbox } = require('../models')
 const { render } = require('../services/templateService')
+const {
+  sanitize,
+  pause,
+  resume,
+} = require('../services/mailboxService')
+const { providerFor } = require('../services/smtp')
 
 // Public login route — issues a JWT for valid credentials
 router.post('/auth/login', (req, res) => {
@@ -634,6 +640,216 @@ router.post('/leads/:id/preview', async (req, res) => {
 
     res.json({ success: true, subject, body, cached })
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// ── Mailboxes (Mongo-backed sending accounts) ──
+
+const MAILBOX_PROVIDERS = ['smtp', 'gmail', 'm365', 'mailgun', 'ses', 'resend']
+
+// Validate mailbox fields. `partial` = update mode (all fields optional).
+const validateMailbox = (body, partial) => {
+  const req = (v) => typeof v === 'string' && v.trim()
+  if (!partial || body.name !== undefined)
+    if (!req(body.name)) return 'name must be a non-empty string'
+  if (!partial || body.email !== undefined)
+    if (!req(body.email)) return 'email must be a non-empty string'
+  if (!partial || body.host !== undefined)
+    if (!req(body.host)) return 'host must be a non-empty string'
+  if (!partial || body.username !== undefined)
+    if (!req(body.username)) return 'username must be a non-empty string'
+  if (!partial) {
+    if (!req(body.password)) return 'password must be a non-empty string'
+  } else if (body.password !== undefined && typeof body.password !== 'string') {
+    return 'password must be a string'
+  }
+  if (!partial || body.port !== undefined)
+    if (typeof body.port !== 'number') return 'port must be a number'
+  if (body.secure !== undefined && typeof body.secure !== 'boolean')
+    return 'secure must be a boolean'
+  if (body.warmupEnabled !== undefined && typeof body.warmupEnabled !== 'boolean')
+    return 'warmupEnabled must be a boolean'
+  if (body.active !== undefined && typeof body.active !== 'boolean')
+    return 'active must be a boolean'
+  if (body.provider !== undefined && !MAILBOX_PROVIDERS.includes(body.provider))
+    return `provider must be one of: ${MAILBOX_PROVIDERS.join(', ')}`
+  if (
+    body.dailyLimit !== undefined &&
+    (typeof body.dailyLimit !== 'number' || body.dailyLimit <= 0)
+  )
+    return 'dailyLimit must be a positive number'
+  if (
+    body.hourlyLimit !== undefined &&
+    (typeof body.hourlyLimit !== 'number' || body.hourlyLimit <= 0)
+  )
+    return 'hourlyLimit must be a positive number'
+  return null
+}
+
+// GET /api/mailboxes — all mailboxes, newest first (passwords excluded)
+router.get('/mailboxes', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const docs = await Mailbox.find().sort({ createdAt: -1 })
+    res.json({ success: true, mailboxes: docs.map(sanitize) })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/mailboxes — create a mailbox
+router.post('/mailboxes', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const invalid = validateMailbox(req.body || {}, false)
+    if (invalid)
+      return res.status(400).json({ success: false, error: invalid })
+
+    const doc = await Mailbox.create(req.body)
+    res.status(201).json({ success: true, mailbox: sanitize(doc) })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// PUT /api/mailboxes/:id — update a mailbox
+router.put('/mailboxes/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const body = req.body || {}
+    const invalid = validateMailbox(body, true)
+    if (invalid)
+      return res.status(400).json({ success: false, error: invalid })
+
+    const updates = {}
+    const fields = [
+      'name',
+      'email',
+      'provider',
+      'host',
+      'port',
+      'secure',
+      'username',
+      'dailyLimit',
+      'hourlyLimit',
+      'warmupEnabled',
+      'warmupStartDate',
+      'active',
+    ]
+    for (const f of fields) if (body[f] !== undefined) updates[f] = body[f]
+    // Only touch the password when a non-empty new value is supplied.
+    if (typeof body.password === 'string' && body.password.trim())
+      updates.password = body.password
+
+    const doc = await Mailbox.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+      runValidators: true,
+    })
+    if (!doc)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Mailbox not found' })
+    res.json({ success: true, mailbox: sanitize(doc) })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res
+        .status(404)
+        .json({ success: false, error: 'Mailbox not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/mailboxes/:id/test — verify the connection, record health
+router.post('/mailboxes/:id/test', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let mailbox
+    try {
+      mailbox = await Mailbox.findById(req.params.id).select('+password')
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res
+          .status(404)
+          .json({ success: false, error: 'Mailbox not found' })
+      throw err
+    }
+    if (!mailbox)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Mailbox not found' })
+
+    let verified = false
+    try {
+      await providerFor(mailbox).verify()
+      verified = true
+      mailbox.healthStatus = 'healthy'
+      mailbox.lastError = undefined
+    } catch (err) {
+      mailbox.healthStatus = 'error'
+      mailbox.lastError = err.message
+    }
+    await mailbox.save()
+    res.json({ success: verified, mailbox: sanitize(mailbox) })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/mailboxes/:id/pause — pause for N minutes (default 60)
+router.post('/mailboxes/:id/pause', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { minutes, reason } = req.body || {}
+    const until = new Date(Date.now() + (minutes || 60) * 60000)
+    const doc = await pause(req.params.id, until, reason)
+    if (!doc)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Mailbox not found' })
+    res.json({ success: true, mailbox: sanitize(doc) })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res
+        .status(404)
+        .json({ success: false, error: 'Mailbox not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/mailboxes/:id/resume — clear pause/error state
+router.post('/mailboxes/:id/resume', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const doc = await resume(req.params.id)
+    if (!doc)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Mailbox not found' })
+    res.json({ success: true, mailbox: sanitize(doc) })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res
+        .status(404)
+        .json({ success: false, error: 'Mailbox not found' })
     res.status(500).json({ success: false, error: err.message })
   }
 })
