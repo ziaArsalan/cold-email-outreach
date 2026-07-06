@@ -42,14 +42,14 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-008] Templates + AI intro-only personalization
 - priority: P1
-- status: todo
+- status: done
 - area: server
 - description: Phase 2 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§AI personalization, §Models→Template). `templateService.render(body, vars)` substituting `{{first_name}} {{company}} {{industry}} {{website}} {{ai_intro}}`. Rework `aiService`: new `generateIntro(lead, aiPrompt)` returning `{ intro, subject }` — intro < 50 words, natural, no buzzwords, mentions something specific about the company (keep web search + JSON-extraction + generate-once caching on the Lead). Template CRUD endpoints (`GET/POST/PUT /api/templates`) and `POST /api/leads/:id/preview` composing template + ai_intro. Keep old `generateEmail` working until T-011 removes its caller.
 - acceptance:
-  - [ ] Template CRUD persists to Mongo; templates are editable without code changes
-  - [ ] Preview endpoint returns a fully rendered email: template body with all vars substituted and the AI intro inline
-  - [ ] Generated intros are < 50 words and stored on the Lead (second preview call makes no AI request)
-  - [ ] Existing `/api/preview` (Sheets flow) still works unchanged
+  - [x] Template CRUD persists to Mongo; templates are editable without code changes
+  - [x] Preview endpoint returns a fully rendered email: template body with all vars substituted and the AI intro inline
+  - [x] Generated intros are < 50 words and stored on the Lead (second preview call makes no AI request)
+  - [x] Existing `/api/preview` (Sheets flow) still works unchanged
 
 ## [T-009] Provider-agnostic SMTP layer + mailbox management
 - priority: P1

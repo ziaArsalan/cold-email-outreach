@@ -6,11 +6,15 @@ const {
   updateLeadStatus,
   saveGeneratedEmail,
 } = require('../services/sheetsService')
-const { generateEmail } = require('../services/aiService')
+const { generateEmail, generateIntro } = require('../services/aiService')
 const { sendEmail, verifyConnection } = require('../services/emailService')
 const { fetchJobRows, updateCoverLetter } = require('../services/upworkSheet')
 const { generateProposal } = require('../services/proposalService')
-const { readConfig, writeConfig, readDailyCount } = require('../services/upworkConfigStore')
+const {
+  readConfig,
+  writeConfig,
+  readDailyCount,
+} = require('../services/upworkConfigStore')
 const { fetchJobs } = require('../services/upworkFetch')
 const {
   verifyCredentials,
@@ -18,12 +22,17 @@ const {
   requireAuth,
 } = require('../services/authService')
 const config = require('../jobs/config')
+const mongoose = require('mongoose')
+const { Lead, Template } = require('../models')
+const { render } = require('../services/templateService')
 
 // Public login route — issues a JWT for valid credentials
 router.post('/auth/login', (req, res) => {
   const { email, password } = req.body || {}
   if (!email || !password || !verifyCredentials(email, password))
-    return res.status(401).json({ success: false, error: 'Invalid credentials' })
+    return res
+      .status(401)
+      .json({ success: false, error: 'Invalid credentials' })
   res.json({ success: true, token: signToken(email) })
 })
 
@@ -264,7 +273,7 @@ router.get('/upwork/settings', (req, res) => {
       keywords: stored.keywords || config.KEYWORDS.join(','),
       cronInterval: stored.cronInterval || config.CRON_INTERVAL,
       autoCover: stored.autoCover ?? config.AUTO_COVER,
-      cronEnabled: stored.cronEnabled ?? true,
+      cronEnabled: stored.cronEnabled ?? false,
       scheduleEnabled: stored.scheduleEnabled ?? false,
       scheduleStart: stored.scheduleStart || '09:00',
       scheduleEnd: stored.scheduleEnd || '18:00',
@@ -298,7 +307,10 @@ router.post('/upwork/settings', (req, res) => {
   if (typeof cronInterval !== 'string' || !cronInterval.trim())
     return res
       .status(400)
-      .json({ success: false, error: 'cronInterval must be a non-empty string' })
+      .json({
+        success: false,
+        error: 'cronInterval must be a non-empty string',
+      })
   if (typeof autoCover !== 'boolean')
     return res
       .status(400)
@@ -409,7 +421,10 @@ router.post('/upwork/test-query', async (req, res) => {
   try {
     const live = readConfig()
     const keywords = live.keywords
-      ? live.keywords.split(',').map((k) => k.trim()).filter(Boolean)
+      ? live.keywords
+          .split(',')
+          .map((k) => k.trim())
+          .filter(Boolean)
       : config.KEYWORDS
     const keyword =
       (req.body.keyword && req.body.keyword.trim()) ||
@@ -421,11 +436,203 @@ router.post('/upwork/test-query', async (req, res) => {
       url: j.url || '',
       skills: Array.isArray(j.skills)
         ? j.skills
-        : (j.skills || '').split(',').map((s) => s.trim()).filter(Boolean),
+        : (j.skills || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
       clientCountry: j.clientCountry || '',
       applicants: j.applicants || 0,
     }))
     res.json({ success: true, keyword, count: result.length, jobs: result })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// ── Templates + AI intro personalization (Mongo-backed) ──
+
+const dbReady = () => mongoose.connection.readyState === 1
+
+// GET /api/templates — all templates, newest first
+router.get('/templates', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const templates = await Template.find().sort({ createdAt: -1 })
+    res.json({ success: true, templates })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/templates — create a template
+router.post('/templates', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { name, subject, body, signature, active } = req.body || {}
+    if (typeof name !== 'string' || !name.trim())
+      return res
+        .status(400)
+        .json({ success: false, error: 'name must be a non-empty string' })
+    if (typeof subject !== 'string' || !subject.trim())
+      return res
+        .status(400)
+        .json({ success: false, error: 'subject must be a non-empty string' })
+    if (typeof body !== 'string' || !body.trim())
+      return res
+        .status(400)
+        .json({ success: false, error: 'body must be a non-empty string' })
+    if (signature !== undefined && typeof signature !== 'string')
+      return res
+        .status(400)
+        .json({ success: false, error: 'signature must be a string' })
+    if (active !== undefined && typeof active !== 'boolean')
+      return res
+        .status(400)
+        .json({ success: false, error: 'active must be a boolean' })
+
+    const template = await Template.create({
+      name,
+      subject,
+      body,
+      signature,
+      active: active === undefined ? true : active,
+    })
+    res.status(201).json({ success: true, template })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// PUT /api/templates/:id — update a template
+router.put('/templates/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { name, subject, body, signature, active } = req.body || {}
+    if (name !== undefined && typeof name !== 'string')
+      return res
+        .status(400)
+        .json({ success: false, error: 'name must be a string' })
+    if (subject !== undefined && typeof subject !== 'string')
+      return res
+        .status(400)
+        .json({ success: false, error: 'subject must be a string' })
+    if (body !== undefined && typeof body !== 'string')
+      return res
+        .status(400)
+        .json({ success: false, error: 'body must be a string' })
+    if (signature !== undefined && typeof signature !== 'string')
+      return res
+        .status(400)
+        .json({ success: false, error: 'signature must be a string' })
+    if (active !== undefined && typeof active !== 'boolean')
+      return res
+        .status(400)
+        .json({ success: false, error: 'active must be a boolean' })
+
+    const updates = {}
+    if (name !== undefined) updates.name = name
+    if (subject !== undefined) updates.subject = subject
+    if (body !== undefined) updates.body = body
+    if (signature !== undefined) updates.signature = signature
+    if (active !== undefined) updates.active = active
+
+    const template = await Template.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+      runValidators: true,
+    })
+    if (!template)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Template not found' })
+    res.json({ success: true, template })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res
+        .status(404)
+        .json({ success: false, error: 'Template not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/leads/:id/preview — render a template with an AI-generated intro
+router.post('/leads/:id/preview', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    // 1-2. Cached intro? — only call AI when the lead has none yet.
+    const cached = !!(lead.aiIntro && lead.aiIntro.trim())
+    if (!cached) {
+      const { intro, subject } = await generateIntro(
+        lead,
+        req.body && req.body.aiPrompt,
+      )
+      lead.aiIntro = intro
+      if (!lead.aiSubject) lead.aiSubject = subject
+      await lead.save()
+    }
+
+    // 3. Resolve the template.
+    let template
+    if (req.body && req.body.templateId) {
+      try {
+        template = await Template.findById(req.body.templateId)
+      } catch (err) {
+        if (err.name === 'CastError')
+          return res
+            .status(404)
+            .json({ success: false, error: 'Template not found' })
+        throw err
+      }
+      if (!template)
+        return res
+          .status(404)
+          .json({ success: false, error: 'Template not found' })
+    } else {
+      template =
+        (await Template.findOne({ name: 'Default', active: true })) ||
+        (await Template.findOne({ active: true }))
+    }
+    if (!template)
+      return res
+        .status(400)
+        .json({ success: false, error: 'No active template' })
+
+    // 4-5. Build vars and render.
+    const vars = {
+      first_name: lead.firstName || '',
+      last_name: lead.lastName || '',
+      company: lead.company || '',
+      industry: lead.industry || '',
+      website: lead.website || '',
+      ai_intro: lead.aiIntro || '',
+    }
+    const subject = render(template.subject, vars)
+    let body = render(template.body, vars)
+    if (template.signature) body += '\n\n' + render(template.signature, vars)
+
+    res.json({ success: true, subject, body, cached })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }

@@ -4,6 +4,12 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-07-06 — [T-008] Templates + AI intro-only personalization
+- **Added:** `server/services/templateService.js` — pure `render(body, vars)` for `{{first_name}} {{last_name}} {{company}} {{industry}} {{website}} {{ai_intro}}` (missing vars → empty string) + `extractVars()`. `aiService.generateIntro(lead, aiPrompt)` — AI now writes only a <50-word personalized opener (+ stored-but-unused subject; the **rendered template subject** drives previews per user decision) with natural-writing/no-buzzword/specific-company-detail rules; web search + JSON extraction + `claude-sonnet-4-6` reused from `generateEmail` (which stays untouched for the legacy flow until T-011). New auth-gated routes: `GET/POST /api/templates`, `PUT /api/templates/:id`, `POST /api/leads/:id/preview` (generates + caches intro on the Lead only when `aiIntro` empty; legacy imported intros count as cache). Mongo-down → clean 503 via readyState guard.
+- **Area:** server
+- **QA:** PASS (API/script): CRUD 200/201/200 + 400/404 validation, persisted to Mongo; live preview on a fresh lead rendered all vars with a genuinely specific 33-word intro (referenced the lead's real app launch); second call `cached:true` in 8ms (no AI); legacy `/api/preview` shape unchanged.
+- **Commit:** T-008
+
 ### 2026-07-06 — [T-007] Outreach V2 foundation — MongoDB, config module, models, Sheets import
 - **Added:** MongoDB (mongoose ^8) foundation for the queue-based Outreach V2 architecture (spec: `.claude/docs/OUTREACH-V2.md`). New `server/config/index.js` (all V2 tunables: Mongo URI, send mode, delay ranges, retry, warm-up week table — distinct from the Upwork `server/jobs/config.js`), `server/db.js` (non-blocking connect, `bufferCommands=false`, 5s timeout), six models (`Lead`, `Mailbox`, `Template`, `Campaign`, `QueuedEmail`, `SendLog`) with spec enums + indexes, and idempotent `npm run import:sheets` (Sheets → Lead upserts by email, status mapping, col-G cached emails → aiIntro/aiSubject, seeds one Mailbox from `SMTP_*` env + one Default template). Server boots and serves all existing Sheets/Upwork routes even when Mongo is down. `.env.example`: `MONGODB_URI` (Atlas SRV placeholder), `QUEUE_WORKER_ENABLED`, `SEND_MODE`.
 - **Area:** server
