@@ -1,5 +1,6 @@
 const config = require('../config')
 const Mailbox = require('../models/Mailbox')
+const settingsService = require('./settingsService')
 
 // Rotation, rate-limiting and warmup logic for sending mailboxes.
 
@@ -47,8 +48,9 @@ const effectiveDailyCap = (mailbox) => {
         (24 * 60 * 60 * 1000),
     )
     const week = Math.floor(daysSince / 7) + 1
+    const warmupWeeks = settingsService.get().warmupWeeks
     if (week <= 4) {
-      return Math.min(base, config.warmupWeeks[week - 1].max)
+      return Math.min(base, warmupWeeks[week - 1].max)
     }
   }
   return base

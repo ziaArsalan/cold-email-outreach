@@ -6,6 +6,7 @@
 const dns = require('dns').promises
 const disposableDomains = require('disposable-email-domains')
 const config = require('../config')
+const settingsService = require('./settingsService')
 const { domainOf } = require('./deliverabilityService')
 
 const DISPOSABLE_SET = new Set(disposableDomains)
@@ -57,7 +58,7 @@ const hasMX = async (domain) => {
 // { valid, reason } — reason is null when valid, else a short human-readable
 // cause suitable for storing on the Lead and showing to the user.
 const verifyEmail = async (email) => {
-  const opts = config.emailVerification
+  const opts = settingsService.get().emailVerification
 
   if (!isValidFormat(email)) return { valid: false, reason: 'invalid email format' }
 

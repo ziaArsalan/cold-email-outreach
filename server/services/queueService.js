@@ -3,8 +3,12 @@
 // drives these transitions.
 
 const { QueuedEmail, SendLog } = require('../models')
+const config = require('../config')
+const settingsService = require('./settingsService')
 
-// Create a pending queue item. scheduledAt null = eligible immediately.
+// Create a pending queue item. scheduledAt null = eligible immediately. maxRetries
+// is captured at enqueue time from the live settings (portal ?? env) so a portal
+// change applies to newly-queued items without a restart.
 const enqueue = async ({
   campaignId,
   leadId,
@@ -13,6 +17,7 @@ const enqueue = async ({
   subject,
   body,
   scheduledAt,
+  maxRetries,
 }) => {
   return QueuedEmail.create({
     campaignId,
@@ -23,6 +28,10 @@ const enqueue = async ({
     body,
     status: 'pending',
     scheduledAt: scheduledAt || null,
+    maxRetries:
+      maxRetries != null
+        ? maxRetries
+        : settingsService.get().maxRetries ?? config.retry.maxRetries,
   })
 }
 

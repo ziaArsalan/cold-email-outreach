@@ -7,6 +7,7 @@ const config = require('../config')
 const { Lead, Mailbox, Campaign, QueuedEmail } = require('../models')
 const mailboxService = require('../services/mailboxService')
 const campaignService = require('../services/campaignService')
+const settingsService = require('../services/settingsService')
 const {
   claimNext,
   markSent,
@@ -18,9 +19,13 @@ const {
   classifySendError,
 } = require('../services/queueService')
 
-// Uniform random int within the configured range for the send mode.
-const randomDelay = (mode = config.sendMode) => {
-  const range = config.delays[mode] || config.delays.warmup
+// Uniform random int within the live-configured range for the send mode. Reads
+// the effective settings (portal ?? env) so switching mode/delays takes effect
+// on the next send with no restart.
+const randomDelay = (mode) => {
+  const s = settingsService.get()
+  mode = mode || s.sendMode
+  const range = s.delays[mode] || s.delays.warmup
   return (
     Math.floor(Math.random() * (range.maxMs - range.minMs + 1)) + range.minMs
   )
@@ -260,22 +265,34 @@ const processOne = async (deps = {}) => {
 
 let started = false
 let timer = null
+// Tracks the last-seen enabled state so we log the OFF→idle / ON→resume
+// transitions once, not on every idle tick.
+let wasEnabled = null
 
 const start = (deps) => {
   if (started) return
-  if (!config.queueWorkerEnabled) {
-    console.log('[queueWorker] disabled — not started')
-    return
-  }
   started = true
-  console.log(`[queueWorker] started — sendMode=${config.sendMode}`)
+  console.log('[queueWorker] started — gating live via settings')
 
   const tick = async () => {
+    const s = settingsService.get()
+
+    // Gate every tick on the live setting — toggling OFF pauses sends within one
+    // idle interval (no restart); toggling ON resumes them.
+    if (!s.queueWorkerEnabled) {
+      if (wasEnabled !== false) console.log('[queueWorker] paused via settings')
+      wasEnabled = false
+      timer = setTimeout(tick, s.workerIdleMs)
+      return
+    }
+    if (wasEnabled === false) console.log('[queueWorker] resumed via settings')
+    wasEnabled = true
+
     const r = await processOne(deps).catch(() => ({ error: true }))
     const delay =
       r && r.sent
         ? randomDelay(deps && deps.sendMode)
-        : Math.min(config.workerIdleMs, randomDelay(deps && deps.sendMode))
+        : Math.min(s.workerIdleMs, randomDelay(deps && deps.sendMode))
     timer = setTimeout(tick, delay)
   }
 
@@ -286,6 +303,7 @@ const stop = () => {
   if (timer) clearTimeout(timer)
   timer = null
   started = false
+  wasEnabled = null
 }
 
 module.exports = { start, stop, processOne, randomDelay }

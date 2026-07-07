@@ -12,6 +12,7 @@ const { enqueue, log } = require('./queueService')
 const { render } = require('./templateService')
 const { validateBody } = require('./deliverabilityService')
 const { verifyEmail } = require('./emailVerificationService')
+const settingsService = require('./settingsService')
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
@@ -64,6 +65,7 @@ const enqueueStepForLead = async (campaign, lead, stepIndex, scheduledAt) => {
     body,
     stepIndex,
     scheduledAt,
+    maxRetries: settingsService.get().maxRetries,
   })
 }
 

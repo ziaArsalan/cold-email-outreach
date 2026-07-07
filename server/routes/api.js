@@ -26,6 +26,7 @@ const mongoose = require('mongoose')
 const { Lead, Template, Mailbox, Campaign, QueuedEmail } = require('../models')
 const { render } = require('../services/templateService')
 const campaignService = require('../services/campaignService')
+const settingsService = require('../services/settingsService')
 const {
   sanitize,
   pause,
@@ -265,6 +266,114 @@ router.post('/upwork/settings', (req, res) => {
   }
   try {
     writeConfig({ ...current, ...settings })
+    res.json({ success: true, settings })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// ── Outreach V2 settings (portal-editable worker/delay/verification tunables) ──
+// UNITS CONTRACT: the server stores and validates everything in ms/integers. The
+// client converts (minutes↔ms, seconds↔ms) and always sends ms on the wire. No
+// secret/infra fields are ever exposed here (by construction of OutreachSetting).
+
+const isPosInt = (n) => Number.isInteger(n) && n > 0
+
+// GET /api/outreach-settings — current effective settings (stored ?? env ?? default).
+// Always 200: getFresh falls back to env defaults when Mongo is down.
+router.get('/outreach-settings', async (req, res) => {
+  const settings = await settingsService.getFresh()
+  res.json({ success: true, settings })
+})
+
+// PUT /api/outreach-settings — partial update; only provided fields are $set.
+router.put('/outreach-settings', async (req, res) => {
+  const body = req.body || {}
+  const patch = {}
+  const bad = (error) => res.status(400).json({ success: false, error })
+
+  if ('queueWorkerEnabled' in body) {
+    if (typeof body.queueWorkerEnabled !== 'boolean')
+      return bad('queueWorkerEnabled must be a boolean')
+    patch.queueWorkerEnabled = body.queueWorkerEnabled
+  }
+
+  if ('sendMode' in body) {
+    if (!['warmup', 'production'].includes(body.sendMode))
+      return bad('sendMode must be one of: warmup, production')
+    patch.sendMode = body.sendMode
+  }
+
+  if ('delays' in body) {
+    const d = body.delays
+    if (!d || typeof d !== 'object')
+      return bad('delays must be an object with warmup and production ranges')
+    for (const mode of ['warmup', 'production']) {
+      const r = d[mode]
+      if (!r || typeof r !== 'object')
+        return bad(`delays.${mode} must be an object with minMs and maxMs`)
+      if (!isPosInt(r.minMs) || !isPosInt(r.maxMs))
+        return bad(`delays.${mode}.minMs and maxMs must be positive integers`)
+      if (r.minMs > r.maxMs)
+        return bad(`delays.${mode}.minMs must be <= maxMs`)
+    }
+    patch.delays = {
+      warmup: { minMs: d.warmup.minMs, maxMs: d.warmup.maxMs },
+      production: { minMs: d.production.minMs, maxMs: d.production.maxMs },
+    }
+  }
+
+  if ('maxRetries' in body) {
+    if (!Number.isInteger(body.maxRetries) || body.maxRetries < 0 || body.maxRetries > 10)
+      return bad('maxRetries must be an integer between 0 and 10')
+    patch.maxRetries = body.maxRetries
+  }
+
+  if ('workerIdleMs' in body) {
+    if (
+      !Number.isInteger(body.workerIdleMs) ||
+      body.workerIdleMs < 1000 ||
+      body.workerIdleMs > 600000
+    )
+      return bad('workerIdleMs must be an integer between 1000 and 600000')
+    patch.workerIdleMs = body.workerIdleMs
+  }
+
+  if ('warmupWeeks' in body) {
+    const w = body.warmupWeeks
+    if (!Array.isArray(w) || w.length !== 4)
+      return bad('warmupWeeks must be an array of exactly 4 rows')
+    for (const row of w) {
+      if (!row || typeof row !== 'object')
+        return bad('each warmupWeeks row must be an object with week, min, max')
+      const ok = ['week', 'min', 'max'].every(
+        (k) => Number.isInteger(row[k]) && row[k] >= 0,
+      )
+      if (!ok)
+        return bad('warmupWeeks week/min/max must be non-negative integers')
+      if (row.min > row.max)
+        return bad('warmupWeeks min must be <= max')
+    }
+    patch.warmupWeeks = w.map((r) => ({ week: r.week, min: r.min, max: r.max }))
+  }
+
+  if ('emailVerification' in body) {
+    const ev = body.emailVerification
+    if (!ev || typeof ev !== 'object')
+      return bad('emailVerification must be an object of three booleans')
+    for (const k of ['checkMX', 'blockDisposable', 'blockRoleBased']) {
+      if (typeof ev[k] !== 'boolean')
+        return bad(`emailVerification.${k} must be a boolean`)
+    }
+    patch.emailVerification = {
+      checkMX: ev.checkMX,
+      blockDisposable: ev.blockDisposable,
+      blockRoleBased: ev.blockRoleBased,
+    }
+  }
+
+  try {
+    const settings = await settingsService.set(patch)
     res.json({ success: true, settings })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })

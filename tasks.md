@@ -54,15 +54,15 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-016] Outreach settings portal — move runtime tunables out of .env
 - priority: P2
-- status: todo
+- status: done
 - area: both
 - description: Most V2 env vars are runtime tunables, not secrets — manage them from the portal (same live-read pattern as the Upwork monitor's `upworkConfigStore`, but Mongo-backed). Server: an `OutreachSetting` singleton doc + `settingsService.get()` with precedence stored-value → env → default, read **live** where it matters (worker tick reads sendMode/delays/enabled each cycle — the worker loop keeps running and checks an `enabled` flag per tick instead of only at boot; verification toggles read per start; retry/idle values per use). Manageable settings: queue worker enabled, send mode (warmup/production), warm-up + production delay ranges (minutes in the UI, ms in storage), max retries, worker idle seconds, warm-up week table (4 rows), email-verification toggles (MX / disposable / role-based). Secrets and infra (SMTP_*, ANTHROPIC_API_KEY, GOOGLE_*, MONGODB_URI, JWT/AUTH, APIFY_*) stay env-only — never shown in the portal. Endpoints: `GET/PUT /api/outreach-settings` (validated). Client: an "Outreach Settings" card (grouped: Worker, Delays, Warm-up, Verification) in the Settings/Dashboard area with Save + saved-state feedback. `.env.example` gains a comment noting these vars are now fallbacks for the portal settings.
 - acceptance:
-  - [ ] Settings card loads current effective values (stored ?? env ?? default) and saves changes that persist across a server restart
-  - [ ] Toggling "queue worker enabled" OFF in the portal stops sends within one worker tick (no server restart); ON resumes them
-  - [ ] Switching send mode warmup→production changes the delay range used for the next send (observable with test-shortened ranges)
-  - [ ] Toggling an email-verification check (e.g. role-based) in the portal changes campaign-start behavior on the next start without restart
-  - [ ] No secret (SMTP password, API keys, Mongo URI, JWT) appears anywhere in the settings UI or its API responses
+  - [x] Settings card loads current effective values (stored ?? env ?? default) and saves changes that persist across a server restart
+  - [x] Toggling "queue worker enabled" OFF in the portal stops sends within one worker tick (no server restart); ON resumes them
+  - [x] Switching send mode warmup→production changes the delay range used for the next send (observable with test-shortened ranges)
+  - [x] Toggling an email-verification check (e.g. role-based) in the portal changes campaign-start behavior on the next start without restart
+  - [x] No secret (SMTP password, API keys, Mongo URI, JWT) appears anywhere in the settings UI or its API responses
 
 <!-- ═══ Outreach V2 (queue-based sending) — spec: .claude/docs/OUTREACH-V2.md — do T-007→T-013 in order ═══ -->
 
