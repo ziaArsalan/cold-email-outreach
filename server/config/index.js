@@ -42,4 +42,12 @@ module.exports = {
     dailyLimit: 50,
     hourlyLimit: 10,
   },
+
+  // Free pre-send email screening (format/MX/disposable/role-based) — runs at
+  // campaign start, before AI generation or enqueue. See emailVerificationService.js.
+  emailVerification: {
+    checkMX: process.env.EMAIL_VERIFY_CHECK_MX !== 'false',
+    blockDisposable: process.env.EMAIL_VERIFY_BLOCK_DISPOSABLE !== 'false',
+    blockRoleBased: process.env.EMAIL_VERIFY_BLOCK_ROLE_BASED !== 'false',
+  },
 }

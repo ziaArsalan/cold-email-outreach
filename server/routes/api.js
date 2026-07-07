@@ -914,9 +914,11 @@ router.post('/campaigns/:id/start', async (req, res) => {
       .json({ success: false, error: 'Database unavailable' })
   try {
     const { leadIds } = req.body || {}
-    const { enqueued } = await campaignService.start(req.params.id, { leadIds })
+    const { enqueued, skipped } = await campaignService.start(req.params.id, {
+      leadIds,
+    })
     const campaign = await Campaign.findById(req.params.id)
-    res.json({ success: true, enqueued, campaign })
+    res.json({ success: true, enqueued, skipped, campaign })
   } catch (err) {
     if (err.name === 'CastError')
       return res

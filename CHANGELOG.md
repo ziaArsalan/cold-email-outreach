@@ -4,6 +4,11 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-07-07 — Pre-send email verification (ad hoc, outside /task pipeline)
+- **Added:** `server/services/emailVerificationService.js` — free, no-cost screening before a lead ever reaches AI generation or the send queue: `isValidFormat` (regex), `hasMX` (DNS MX lookup via `dns.promises.resolveMx`, cached per domain), `isDisposableDomain` (via the `disposable-email-domains` npm package, 121k+ known domains), `isRoleBased` (admin@/support@/info@/etc.), composed into `verifyEmail()`. Wired into `campaignService.start()`: every targeted lead is screened before AI/enqueue; invalid ones are skipped, marked `status:'failed'` with `emailCheckStatus`/`emailCheckReason` on the Lead, and never enqueued — valid ones proceed exactly as before. `start()` now returns `{ enqueued, skipped }`; `POST /api/campaigns/:id/start` surfaces `skipped`; the client alerts with the skip count when starting a campaign from the UI. All three checks are individually toggleable via new env vars (`EMAIL_VERIFY_CHECK_MX`, `EMAIL_VERIFY_BLOCK_DISPOSABLE`, `EMAIL_VERIFY_BLOCK_ROLE_BASED`, default all `true`). Lead model gains `emailCheckStatus` (`unchecked|valid|invalid`) and `emailCheckReason`.
+- **Area:** both
+- **QA:** `EMAIL VERIFICATION PASS` (format/role/disposable/MX unit checks incl. real DNS lookups, plus a `campaignService.start()` integration case: 3 leads targeted, 1 valid enqueued, 2 invalid — bad-format and disposable-domain — skipped and marked failed with reasons) + regression `DELIVERABILITY PASS` / `QUEUE PASS` / `ROTATION PASS`; clean CRA production build. No task id — requested directly by the user, not from `tasks.md`.
+
 ### 2026-07-07 — Mailbox management UI (ad hoc, outside /task pipeline)
 - **Added:** Dashboard "Mailboxes" card gains an Add/Edit form (name, email, host, port, secure, username, password, daily/hourly limits, warm-up toggle + start date) and per-row Test/Edit/Pause-Resume actions — wired entirely to the existing T-009 `/api/mailboxes*` endpoints, no new server routes. Editing with a blank password keeps the mailbox's existing password (field is never prefilled). Manual Pause defaults to 24h. Warm-up column shows On/Off + start date in the table.
 - **Area:** client

@@ -444,7 +444,12 @@ export default function App() {
 
   const campaignAction = async (id, action) => {
     try {
-      await axios.post(`${API}/campaigns/${id}/${action}`)
+      const { data } = await axios.post(`${API}/campaigns/${id}/${action}`)
+      if (action === 'start' && data.skipped > 0) {
+        alert(
+          `Campaign started: ${data.enqueued} enqueued, ${data.skipped} lead(s) skipped (invalid email — see server logs).`,
+        )
+      }
       await fetchCampaigns()
     } catch (err) {
       alert(`Failed to ${action} campaign: ` + (err.response?.data?.error || err.message))

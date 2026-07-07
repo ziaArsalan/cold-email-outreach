@@ -11,6 +11,7 @@ const { generateIntro } = require('./aiService')
 const { enqueue, log } = require('./queueService')
 const { render } = require('./templateService')
 const { validateBody } = require('./deliverabilityService')
+const { verifyEmail } = require('./emailVerificationService')
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
@@ -74,7 +75,33 @@ const start = async (campaignId, { leadIds } = {}) => {
   if (!check.ok)
     throw badRequest(`Template fails deliverability rules: ${check.errors[0]}`)
 
-  const leads = await targetLeads(campaign, leadIds)
+  const targeted = await targetLeads(campaign, leadIds)
+
+  // Free pre-send screening — format/MX/disposable/role-based. Runs before AI
+  // generation and enqueue so a bad address never costs an AI call or an SMTP
+  // attempt. Not a paid mailbox-exists verifier, just cheap upfront filtering.
+  const leads = []
+  let skipped = 0
+  for (const lead of targeted) {
+    const { valid, reason } = await verifyEmail(lead.email)
+    lead.emailCheckStatus = valid ? 'valid' : 'invalid'
+    lead.emailCheckReason = valid ? undefined : reason
+    if (!valid) {
+      lead.status = 'failed'
+      await lead.save()
+      skipped += 1
+    } else {
+      await lead.save()
+      leads.push(lead)
+    }
+  }
+  if (skipped)
+    await log(
+      'warn',
+      'campaign',
+      `campaign ${campaign._id}: skipped ${skipped} lead(s) with invalid emails at start`,
+      { campaignId: campaign._id },
+    )
 
   const missingIntros = leads.filter((l) => !(l.aiIntro && l.aiIntro.trim()))
   if (missingIntros.length > 10)
@@ -117,7 +144,7 @@ const start = async (campaignId, { leadIds } = {}) => {
 
   campaign.status = 'running'
   await campaign.save()
-  return { enqueued }
+  return { enqueued, skipped }
 }
 
 const pause = async (id) => {

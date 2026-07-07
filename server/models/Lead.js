@@ -29,6 +29,14 @@ const leadSchema = new mongoose.Schema(
     },
     aiIntro: String,
     aiSubject: String,
+    // Pre-send screening result (format/MX/disposable/role-based) — set at
+    // campaign start, before enqueue. Not a paid-verifier mailbox check.
+    emailCheckStatus: {
+      type: String,
+      enum: ['unchecked', 'valid', 'invalid'],
+      default: 'unchecked',
+    },
+    emailCheckReason: String,
     lastContactDate: Date,
     campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign' },
     replyStatus: String,
