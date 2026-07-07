@@ -27,6 +27,43 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+<!-- ═══ Outreach V2.1 (portal completeness) — do T-014→T-016 in order ═══ -->
+
+## [T-014] Template manager UI — create/edit email copy from the portal
+- priority: P1
+- status: todo
+- area: both
+- description: The template API (T-008: `GET/POST/PUT /api/templates`) has no UI — campaigns can only pick from pre-existing templates. Add a **Templates** tab to the client: list (name, subject, active badge, updatedAt) + create/edit form (name, subject, body textarea, signature textarea, active toggle) with a variables hint (`{{first_name}} {{last_name}} {{company}} {{industry}} {{website}} {{ai_intro}}`) and a live preview pane that renders the template with sample values (client-side substitution is fine). Server: add `DELETE /api/templates/:id` — reject with 400 when any campaign references the template (`Campaign.exists({ templateId })`), suggest deactivating instead. The campaign form's template dropdown must reflect newly created templates without a full page reload (refetch on tab entry is fine).
+- acceptance:
+  - [ ] A "Templates" tab lists existing templates; the seeded Default is visible with its subject
+  - [ ] Creating a template in the UI persists it (survives reload) and it immediately appears in the Campaigns form's template dropdown
+  - [ ] Editing body/subject/signature saves and the live preview shows all `{{vars}}` substituted with sample values
+  - [ ] Deleting an unreferenced template removes it; deleting one referenced by a campaign shows a clear error and does not delete
+
+## [T-015] Follow-up sequences — multi-step campaigns with stop-on-reply
+- priority: P1
+- status: todo
+- area: both
+- description: Campaigns are single-touch today. Add sequence steps: Campaign gains `steps: [{ order, templateId, delayDays }]` (step 1 = the initial email; backward compat: campaigns with empty `steps` behave exactly as today using `templateId`). Enqueue-at-send-time design: when the worker marks a step-N item `sent`, it enqueues the step-N+1 item for the same lead with `scheduledAt = sentAt + delayDays` (renders the step's template with the lead's cached `ai_intro`; `QueuedEmail` gains `stepIndex`). **Stop-on-reply/bounce/unsubscribe:** before sending ANY item, the worker checks the lead's current status — `replied`/`bounced`/`unsubscribed` → item flips to `cancelled` (never sent) and no further steps are scheduled. Campaign auto-completion must count future-scheduled follow-ups as open work. Deliverability gate at start validates EVERY step's template, not just the first. Client: campaign form gets a sequence builder — step 1 template + "+ Add follow-up" rows (template dropdown + "wait N days"); campaign list shows the step count; queue view shows the step number per item.
+- acceptance:
+  - [ ] Creating a campaign with 2 follow-ups (e.g. +3 days, +7 days) and starting it enqueues ONLY step-1 items; step count visible in the campaigns list
+  - [ ] After a step-1 item sends, a step-2 item exists for that lead with `scheduledAt` ≈ sentAt + configured delay (test-shortened delays acceptable), and the worker does not send it early
+  - [ ] Marking the lead as Replied before the follow-up's time causes the worker to cancel (not send) the pending follow-up
+  - [ ] A campaign with no steps behaves exactly as before (single email, regression-safe); existing running campaigns are unaffected
+  - [ ] Deliverability validation at start covers every step's template (a 2-link template in step 2 blocks the start)
+
+## [T-016] Outreach settings portal — move runtime tunables out of .env
+- priority: P2
+- status: todo
+- area: both
+- description: Most V2 env vars are runtime tunables, not secrets — manage them from the portal (same live-read pattern as the Upwork monitor's `upworkConfigStore`, but Mongo-backed). Server: an `OutreachSetting` singleton doc + `settingsService.get()` with precedence stored-value → env → default, read **live** where it matters (worker tick reads sendMode/delays/enabled each cycle — the worker loop keeps running and checks an `enabled` flag per tick instead of only at boot; verification toggles read per start; retry/idle values per use). Manageable settings: queue worker enabled, send mode (warmup/production), warm-up + production delay ranges (minutes in the UI, ms in storage), max retries, worker idle seconds, warm-up week table (4 rows), email-verification toggles (MX / disposable / role-based). Secrets and infra (SMTP_*, ANTHROPIC_API_KEY, GOOGLE_*, MONGODB_URI, JWT/AUTH, APIFY_*) stay env-only — never shown in the portal. Endpoints: `GET/PUT /api/outreach-settings` (validated). Client: an "Outreach Settings" card (grouped: Worker, Delays, Warm-up, Verification) in the Settings/Dashboard area with Save + saved-state feedback. `.env.example` gains a comment noting these vars are now fallbacks for the portal settings.
+- acceptance:
+  - [ ] Settings card loads current effective values (stored ?? env ?? default) and saves changes that persist across a server restart
+  - [ ] Toggling "queue worker enabled" OFF in the portal stops sends within one worker tick (no server restart); ON resumes them
+  - [ ] Switching send mode warmup→production changes the delay range used for the next send (observable with test-shortened ranges)
+  - [ ] Toggling an email-verification check (e.g. role-based) in the portal changes campaign-start behavior on the next start without restart
+  - [ ] No secret (SMTP password, API keys, Mongo URI, JWT) appears anywhere in the settings UI or its API responses
+
 <!-- ═══ Outreach V2 (queue-based sending) — spec: .claude/docs/OUTREACH-V2.md — do T-007→T-013 in order ═══ -->
 
 ## [T-007] Outreach V2 foundation — MongoDB, config module, models, Sheets import
