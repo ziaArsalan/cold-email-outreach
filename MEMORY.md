@@ -38,6 +38,7 @@ When a class of decision has been approved enough times that it's safe to auto-a
 
 ## Conventions
 - Frontend is a single `client/src/App.js` (Create React App). Styles in `App.css`.
+- **Form field styling (2026-07-08)**: all text-like `<input>` (not checkbox/radio), `<select>`, and `<textarea>` get ONE shared pill style from a global rule in `App.css` (`--field-bg`/`--field-radius` vars) — don't add per-field background/border/radius overrides in JSX or new CSS classes. A field that should stretch to fill its column needs to be a **direct child** of `.control-group` or `.login-field` (the width:100% rule uses `>`, not a descendant selector, specifically so nested rows like two side-by-side time inputs don't fight for 100% width each).
 - Backend routes in `server/routes/api.js`; integrations in `server/services/*`.
 - _(add naming / structure conventions as they emerge)_
 

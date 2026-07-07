@@ -12,6 +12,8 @@
   --bg: #0a0c10;
   --surface: #111318;
   --surface2: #181b22;
+  --field-bg: #1c202b;
+  --field-radius: 14px;
   --border: #1e2330;
   --accent: #3b82f6;
   --accent2: #6366f1;
@@ -21,6 +23,7 @@
   --text: #e2e8f0;
   --muted: #64748b;
   --sidebar-w: 220px;
+  color-scheme: dark;
 }
 
 body {
@@ -235,24 +238,62 @@ nav {
   letter-spacing: 0.5px;
 }
 
-input[type='number'] {
-  background: var(--surface2);
+/* ── Form fields ──────────────────────────────────────────────
+   One shared pill style for every text-like input, select and
+   textarea in the app (checkboxes/radios keep native styling). */
+input:not([type='checkbox']):not([type='radio']),
+select,
+textarea {
+  background: var(--field-bg);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
+  border-radius: var(--field-radius);
+  padding: 0.65rem 1rem;
   color: var(--text);
-  font-family: 'Space Mono', monospace;
+  font-family: 'DM Sans', sans-serif;
   font-size: 14px;
-  width: 140px;
   outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-
-input[type='number']:focus {
+input:not([type='checkbox']):not([type='radio']):focus,
+select:focus,
+textarea:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
-input[type='number']:disabled {
+input:not([type='checkbox']):not([type='radio']):disabled,
+select:disabled,
+textarea:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+input[type='number'] {
+  font-family: 'Space Mono', monospace;
+  width: 140px;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%2364748b'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+  background-size: 10px 6px;
+}
+
+/* Fields that are direct children of a form group fill their column.
+   Direct-child (not descendant) so nested rows like .time-range-row's
+   side-by-side time inputs keep their natural width. */
+.control-group > input:not([type='checkbox']):not([type='radio']),
+.control-group > select,
+.control-group > textarea,
+.login-field > input {
+  width: 100%;
 }
 
 .control-actions {
@@ -848,7 +889,6 @@ tbody tr:hover td {
 
 /* Time range row */
 .time-range-row { display:flex; align-items:center; gap:8px; margin-top:8px; }
-.time-range-row input[type=time] { padding:6px 10px; background:var(--surface,#1e293b); border:1px solid var(--border,#334155); border-radius:6px; color:inherit; font-size:14px; }
 
 /* Test query results */
 .test-results-card { margin-top:12px; padding:14px; background:var(--surface,#1e293b); border:1px solid var(--border,#334155); border-radius:8px; max-height:320px; overflow-y:auto; }
@@ -893,18 +933,6 @@ tbody tr:hover td {
 .login-form { display: flex; flex-direction: column; gap: 1rem; }
 .login-field { display: flex; flex-direction: column; gap: 6px; }
 .login-field label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted, #6b7280); font-weight: 600; }
-.login-field input {
-  background: var(--bg, #0f172a);
-  border: 1px solid var(--border, #334155);
-  border-radius: 8px;
-  padding: 10px 14px;
-  color: inherit;
-  font-size: 14px;
-  width: 100%;
-  box-sizing: border-box;
-  transition: border-color .15s;
-}
-.login-field input:focus { outline: none; border-color: var(--accent, #3b82f6); }
 .login-error { background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.3); color: #f87171; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
 .login-btn { width: 100%; justify-content: center; margin-top: 0.25rem; }
 
@@ -934,15 +962,6 @@ tbody tr:hover td {
 }
 .settings-textarea {
   width: 100%;
-  box-sizing: border-box;
   resize: vertical;
   min-height: 72px;
-  background: var(--bg, #0f172a);
-  border: 1px solid var(--border, #334155);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: inherit;
-  font-size: 13px;
-  font-family: inherit;
 }
-.settings-textarea:focus { outline: none; border-color: var(--accent, #3b82f6); }
