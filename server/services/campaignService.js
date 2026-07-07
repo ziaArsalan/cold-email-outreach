@@ -10,6 +10,7 @@ const { Lead, Template, Campaign, QueuedEmail } = require('../models')
 const { generateIntro } = require('./aiService')
 const { enqueue, log } = require('./queueService')
 const { render } = require('./templateService')
+const { validateBody } = require('./deliverabilityService')
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
@@ -61,6 +62,17 @@ const start = async (campaignId, { leadIds } = {}) => {
   const template = await Template.findById(campaign.templateId)
   if (!template)
     throw badRequest('Campaign has no valid template — set templateId first')
+
+  // Deliverability gate: validate the template body+signature ONCE, before the
+  // enqueue loop. Doing it here (not per-lead) prevents partially enqueuing a
+  // batch on a bad template — the links/images live in the template itself, and
+  // the per-lead ai_intro is length/format-constrained by the AI prompt, so a
+  // template that passes here passes for every lead.
+  const composed =
+    template.body + (template.signature ? '\n\n' + template.signature : '')
+  const check = validateBody(composed)
+  if (!check.ok)
+    throw badRequest(`Template fails deliverability rules: ${check.errors[0]}`)
 
   const leads = await targetLeads(campaign, leadIds)
 

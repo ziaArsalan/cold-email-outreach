@@ -7,6 +7,7 @@ const config = require('./jobs/config')
 const { runCycle } = require('./jobs/upworkMonitor')
 const { connectMongo } = require('./db')
 const { start: startQueueWorker } = require('./workers/schedulerWorker')
+const { domainMismatch } = require('./services/deliverabilityService')
 
 // One-shot dry-run: run a single monitor cycle and exit. Does not start the
 // HTTP listener or the cron scheduler.
@@ -34,6 +35,9 @@ app.get('/health', (req, res) =>
 
 app.listen(PORT, () => {
   console.log(`Devtronics Outreach Server running on port ${PORT}`)
+
+  const w = domainMismatch(process.env.FROM_EMAIL, process.env.SMTP_USER)
+  if (w) console.warn('[deliverability]', w)
 
   // Fire-and-forget: a down Mongo must not block boot. Sheets/Upwork features
   // keep working without it; DB-backed features are simply disabled.

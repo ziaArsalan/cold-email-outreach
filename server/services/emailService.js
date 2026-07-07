@@ -15,6 +15,10 @@ const sendEmail = async ({ to, subject, body }) => {
     to,
     subject,
     text: body,
+    // Legacy Sheets flow intentionally keeps an HTML part (line-break formatted).
+    // Only the campaign/queue path is plain-text-by-default for deliverability;
+    // this one-off sheet send predates that policy and stays HTML on purpose.
+    html: body.replace(/\n/g, '<br/>'),
     fromName: process.env.FROM_NAME,
     fromEmail: process.env.FROM_EMAIL,
   })

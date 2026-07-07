@@ -33,6 +33,7 @@ const {
   effectiveDailyCap,
 } = require('../services/mailboxService')
 const { providerFor } = require('../services/smtp')
+const { domainMismatch } = require('../services/deliverabilityService')
 
 // Public login route — issues a JWT for valid credentials
 router.post('/auth/login', (req, res) => {
@@ -709,7 +710,14 @@ router.post('/mailboxes/:id/test', async (req, res) => {
       mailbox.lastError = err.message
     }
     await mailbox.save()
-    res.json({ success: verified, mailbox: sanitize(mailbox) })
+
+    // Deliverability warnings — non-fatal. Flag when the visible FROM address
+    // and the authenticating SMTP user live on different domains.
+    const warnings = []
+    const w = domainMismatch(mailbox.email, mailbox.username)
+    if (w) warnings.push(w)
+
+    res.json({ success: verified, mailbox: sanitize(mailbox), warnings })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }

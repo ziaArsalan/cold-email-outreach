@@ -109,6 +109,10 @@ const processOne = async (deps = {}) => {
         to,
         subject: item.subject,
         text: item.body,
+        html:
+          campaign && campaign.htmlEnabled
+            ? item.body.replace(/\n/g, '<br/>')
+            : null,
         fromName: mailbox.name || process.env.FROM_NAME,
         fromEmail: mailbox.email,
       })

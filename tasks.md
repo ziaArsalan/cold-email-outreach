@@ -98,14 +98,14 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-013] Deliverability polish + sending-domain guide
 - priority: P2
-- status: todo
+- status: done
 - area: server
 - description: Phase 7 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Deliverability). Compose-time enforcement: plain-text by default (HTML only if campaign opts in), warn/block when body has >1 link, images, or attachments; signature appended from template; human-like formatting preserved. Startup/mailbox-test warning when FROM domain ≠ mailbox domain. Write `.claude/docs/DELIVERABILITY.md`: SPF/DKIM/DMARC DNS records for Namecheap Private Email (meetdevtronics.com / devtronics.co), warm-up guidance, unsubscribe-handling note.
 - acceptance:
-  - [ ] Sending a template with 2 links is rejected at enqueue with a clear error
-  - [ ] Sent emails are plain text (no HTML part) unless the campaign explicitly enables HTML
-  - [ ] Mailbox test warns on FROM/domain mismatch
-  - [ ] DELIVERABILITY.md exists with copy-pasteable SPF/DKIM/DMARC record examples
+  - [x] Sending a template with 2 links is rejected at enqueue with a clear error
+  - [x] Sent emails are plain text (no HTML part) unless the campaign explicitly enables HTML
+  - [x] Mailbox test warns on FROM/domain mismatch
+  - [x] DELIVERABILITY.md exists with copy-pasteable SPF/DKIM/DMARC record examples
 
 ## [T-006] Login screen + Monitor Settings UI polish
 - priority: P0

@@ -13,6 +13,7 @@ const campaignSchema = new mongoose.Schema(
       default: 'draft',
     },
     warmupEnabled: { type: Boolean, default: true },
+    htmlEnabled: { type: Boolean, default: false },
     schedule: {
       days: [String],
       startTime: String,
