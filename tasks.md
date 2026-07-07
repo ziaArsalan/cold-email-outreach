@@ -31,14 +31,14 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-014] Template manager UI — create/edit email copy from the portal
 - priority: P1
-- status: todo
+- status: done
 - area: both
 - description: The template API (T-008: `GET/POST/PUT /api/templates`) has no UI — campaigns can only pick from pre-existing templates. Add a **Templates** tab to the client: list (name, subject, active badge, updatedAt) + create/edit form (name, subject, body textarea, signature textarea, active toggle) with a variables hint (`{{first_name}} {{last_name}} {{company}} {{industry}} {{website}} {{ai_intro}}`) and a live preview pane that renders the template with sample values (client-side substitution is fine). Server: add `DELETE /api/templates/:id` — reject with 400 when any campaign references the template (`Campaign.exists({ templateId })`), suggest deactivating instead. The campaign form's template dropdown must reflect newly created templates without a full page reload (refetch on tab entry is fine).
 - acceptance:
-  - [ ] A "Templates" tab lists existing templates; the seeded Default is visible with its subject
-  - [ ] Creating a template in the UI persists it (survives reload) and it immediately appears in the Campaigns form's template dropdown
-  - [ ] Editing body/subject/signature saves and the live preview shows all `{{vars}}` substituted with sample values
-  - [ ] Deleting an unreferenced template removes it; deleting one referenced by a campaign shows a clear error and does not delete
+  - [x] A "Templates" tab lists existing templates; the seeded Default is visible with its subject
+  - [x] Creating a template in the UI persists it (survives reload) and it immediately appears in the Campaigns form's template dropdown
+  - [x] Editing body/subject/signature saves and the live preview shows all `{{vars}}` substituted with sample values
+  - [x] Deleting an unreferenced template removes it; deleting one referenced by a campaign shows a clear error and does not delete
 
 ## [T-015] Follow-up sequences — multi-step campaigns with stop-on-reply
 - priority: P1

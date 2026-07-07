@@ -477,6 +477,34 @@ router.put('/templates/:id', async (req, res) => {
   }
 })
 
+// DELETE /api/templates/:id — delete a template (blocked if referenced)
+router.delete('/templates/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    if (await Campaign.exists({ templateId: req.params.id }))
+      return res.status(400).json({
+        success: false,
+        error:
+          'Template is referenced by a campaign — deactivate it instead of deleting',
+      })
+    const template = await Template.findByIdAndDelete(req.params.id)
+    if (!template)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Template not found' })
+    res.json({ success: true })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res
+        .status(404)
+        .json({ success: false, error: 'Template not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/leads/:id/preview — render a template with an AI-generated intro
 router.post('/leads/:id/preview', async (req, res) => {
   if (!dbReady())

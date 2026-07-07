@@ -72,6 +72,21 @@ const BLANK_CAMPAIGN = {
 
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
+// Sample values used to render the live template preview.
+const SAMPLE_VARS = {
+  first_name: 'Jane',
+  last_name: 'Doe',
+  company: 'Acme Co',
+  industry: 'SaaS',
+  website: 'acme.co',
+  ai_intro:
+    'I noticed Acme just shipped a new dashboard — clean work.',
+}
+
+// Replace {{var}} tokens with the provided values (blank for unknown keys).
+const substitute = (text, vars) =>
+  String(text ?? '').replace(/{{\s*(\w+)\s*}}/g, (_, k) => vars[k] ?? '')
+
 // Summarize a campaign's schedule for the list row.
 const scheduleSummary = (schedule) => {
   if (!schedule) return 'Any time'
@@ -193,6 +208,10 @@ export default function App() {
   const [mailboxBusy, setMailboxBusy] = useState(false)
   const [mailboxTestResult, setMailboxTestResult] = useState(null) // { id, success, warnings }
 
+  // Template management (add/edit/delete)
+  const [templateForm, setTemplateForm] = useState(null) // null = closed
+  const [templateBusy, setTemplateBusy] = useState(false)
+
   const logout = () => {
     localStorage.removeItem('token')
     delete axios.defaults.headers.common['Authorization']
@@ -276,6 +295,14 @@ export default function App() {
     hourlyLimit: 10,
     warmupEnabled: true,
     warmupStartDate: new Date().toISOString().slice(0, 10),
+  }
+
+  const BLANK_TEMPLATE = {
+    name: '',
+    subject: '',
+    body: '',
+    signature: '',
+    active: true,
   }
 
   const openNewMailboxForm = () => {
@@ -385,6 +412,73 @@ export default function App() {
       )
     } finally {
       setMailboxBusy(false)
+    }
+  }
+
+  // ── Templates (add / edit / delete) ──
+  const openNewTemplateForm = () => setTemplateForm({ ...BLANK_TEMPLATE })
+
+  const openEditTemplateForm = (t) =>
+    setTemplateForm({
+      _id: t._id,
+      name: t.name || '',
+      subject: t.subject || '',
+      body: t.body || '',
+      signature: t.signature || '',
+      active: t.active !== false,
+    })
+
+  const closeTemplateForm = () => setTemplateForm(null)
+
+  const saveTemplate = async (e) => {
+    e.preventDefault()
+    // Explicit guard so save failures always surface a message (not just the
+    // browser's native required-field bubble, which is easy to miss).
+    if (!templateForm.name.trim() || !templateForm.subject.trim() || !templateForm.body.trim()) {
+      alert('Name, Subject and Body are all required.')
+      return
+    }
+    setTemplateBusy(true)
+    try {
+      const payload = {
+        name: templateForm.name,
+        subject: templateForm.subject,
+        body: templateForm.body,
+        signature: templateForm.signature,
+        active: templateForm.active,
+      }
+      if (templateForm._id) {
+        await axios.put(`${API}/templates/${templateForm._id}`, payload)
+      } else {
+        await axios.post(`${API}/templates`, payload)
+      }
+      closeTemplateForm()
+      await fetchTemplates()
+    } catch (err) {
+      alert(
+        'Failed to save template: ' +
+          (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setTemplateBusy(false)
+    }
+  }
+
+  const deleteTemplate = async (t) => {
+    if (
+      !window.confirm(
+        `Delete template "${t.name}"? This cannot be undone.`,
+      )
+    )
+      return
+    try {
+      await axios.delete(`${API}/templates/${t._id}`)
+      await fetchTemplates()
+    } catch (err) {
+      alert(
+        'Failed to delete template: ' +
+          (err.response?.data?.error || err.message),
+      )
     }
   }
 
@@ -672,6 +766,15 @@ export default function App() {
             }}
           >
             <span className='nav-icon'>◈</span> Campaigns
+          </button>
+          <button
+            className={tab === 'templates' ? 'nav-item active' : 'nav-item'}
+            onClick={() => {
+              setTab('templates')
+              fetchTemplates()
+            }}
+          >
+            <span className='nav-icon'>▤</span> Templates
           </button>
           <button
             className={tab === 'upwork' ? 'nav-item active' : 'nav-item'}
@@ -1516,6 +1619,234 @@ export default function App() {
                 </div>
               </form>
             </div>
+          </div>
+        )}
+
+        {/* ── TEMPLATES TAB ── */}
+        {tab === 'templates' && (
+          <div className='tab-content'>
+            <div className='page-header'>
+              <h1>Templates</h1>
+              <p>Reusable email templates with {'{{variable}}'} substitution</p>
+            </div>
+
+            <div className='card table-card'>
+              <div
+                className='bulk-actions'
+                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2 style={{ margin: 0 }}>Your Templates</h2>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button className='btn-ghost' onClick={fetchTemplates}>
+                    ↻ Refresh
+                  </button>
+                  <button className='btn-start' onClick={openNewTemplateForm}>
+                    + New Template
+                  </button>
+                </div>
+              </div>
+              {templates.length === 0 ? (
+                <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                  No templates yet.
+                </p>
+              ) : (
+                <div className='table-wrapper'>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Subject</th>
+                        <th>Status</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {templates.map((t) => (
+                        <tr key={t._id}>
+                          <td>{t.name}</td>
+                          <td
+                            style={{
+                              maxWidth: '280px',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                            title={t.subject}
+                          >
+                            {t.subject}
+                          </td>
+                          <td>
+                            <span
+                              className={`status-badge ${
+                                t.active !== false
+                                  ? 'health-healthy'
+                                  : 'health-paused'
+                              }`}
+                            >
+                              {t.active !== false ? 'active' : 'inactive'}
+                            </span>
+                          </td>
+                          <td>
+                            {t.updatedAt
+                              ? new Date(t.updatedAt).toLocaleDateString()
+                              : '—'}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button
+                                className='btn-ghost'
+                                onClick={() => openEditTemplateForm(t)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className='btn-stop'
+                                onClick={() => deleteTemplate(t)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {templateForm && (
+              <form
+                onSubmit={saveTemplate}
+                className='card'
+                style={{ background: 'var(--bg-alt)' }}
+              >
+                <h3 style={{ marginTop: 0 }}>
+                  {templateForm._id ? 'Edit Template' : 'New Template'}
+                </h3>
+                <div className='settings-fields-grid'>
+                  <div className='control-group'>
+                    <label>Name</label>
+                    <input
+                      value={templateForm.name}
+                      onChange={(e) =>
+                        setTemplateForm((f) => ({ ...f, name: e.target.value }))
+                      }
+                      placeholder='Default'
+                      required
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>Subject</label>
+                    <input
+                      value={templateForm.subject}
+                      onChange={(e) =>
+                        setTemplateForm((f) => ({
+                          ...f,
+                          subject: e.target.value,
+                        }))
+                      }
+                      placeholder='Quick question, {{first_name}}'
+                      required
+                    />
+                  </div>
+                  <div className='control-group full-width'>
+                    <label>Body</label>
+                    <textarea
+                      rows={8}
+                      value={templateForm.body}
+                      onChange={(e) =>
+                        setTemplateForm((f) => ({ ...f, body: e.target.value }))
+                      }
+                      required
+                    />
+                    <span className='field-note'>
+                      {
+                        'Variables: {{first_name}} {{last_name}} {{company}} {{industry}} {{website}} {{ai_intro}}'
+                      }
+                    </span>
+                  </div>
+                  <div className='control-group full-width'>
+                    <label>Signature</label>
+                    <textarea
+                      rows={3}
+                      value={templateForm.signature}
+                      onChange={(e) =>
+                        setTemplateForm((f) => ({
+                          ...f,
+                          signature: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>
+                      <input
+                        type='checkbox'
+                        checked={templateForm.active}
+                        onChange={(e) =>
+                          setTemplateForm((f) => ({
+                            ...f,
+                            active: e.target.checked,
+                          }))
+                        }
+                      />{' '}
+                      Active
+                    </label>
+                  </div>
+                </div>
+
+                <div
+                  className='card'
+                  style={{ background: 'var(--bg-alt)', marginTop: '1rem' }}
+                >
+                  <h4 style={{ marginTop: 0 }}>Live Preview</h4>
+                  <p style={{ margin: '0 0 0.5rem' }}>
+                    <strong>Subject:</strong>{' '}
+                    {substitute(templateForm.subject, SAMPLE_VARS)}
+                  </p>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>
+                    {substitute(templateForm.body, SAMPLE_VARS)}
+                  </div>
+                  {templateForm.signature && (
+                    <div
+                      style={{ whiteSpace: 'pre-wrap', marginTop: '0.75rem' }}
+                    >
+                      {substitute(templateForm.signature, SAMPLE_VARS)}
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: '1rem',
+                    display: 'flex',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <button
+                    className='btn-start'
+                    type='submit'
+                    disabled={templateBusy}
+                  >
+                    {templateBusy
+                      ? 'Saving…'
+                      : templateForm._id
+                        ? 'Save Changes'
+                        : '+ Create Template'}
+                  </button>
+                  <button
+                    className='btn-ghost'
+                    type='button'
+                    onClick={closeTemplateForm}
+                    disabled={templateBusy}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 
