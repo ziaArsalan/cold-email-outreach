@@ -84,6 +84,13 @@ const scheduleSummary = (schedule) => {
   return `${dayPart} · ${timePart}`
 }
 
+// Compact local date-time for queue/mailbox tables; em dash when absent.
+const fmtDate = (d) => (d ? new Date(d).toLocaleString() : '—')
+
+// Truncate long strings for table cells (full value shown via title attr).
+const trunc = (s, n = 40) =>
+  s && s.length > n ? s.slice(0, n) + '…' : s || ''
+
 function LoginScreen({ onSuccess }) {
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
@@ -175,6 +182,11 @@ export default function App() {
   const [upworkTestLoading, setUpworkTestLoading] = useState(false)
   const [upworkTestResults, setUpworkTestResults] = useState(null)
   const [authed, setAuthed] = useState(!!localStorage.getItem('token'))
+  // Dashboard analytics + live queue (T-012)
+  const [analytics, setAnalytics] = useState(null)
+  const [queue, setQueue] = useState({ items: [], total: 0, page: 1, pages: 1 })
+  const [queueStatus, setQueueStatus] = useState('')
+  const [queuePage, setQueuePage] = useState(1)
 
   const logout = () => {
     localStorage.removeItem('token')
@@ -200,6 +212,51 @@ export default function App() {
   useEffect(() => {
     fetchLeads()
   }, [])
+
+  // ── Dashboard analytics + live queue (T-012) ──
+  const fetchAnalytics = async () => {
+    try {
+      const { data } = await axios.get(`${API}/analytics`)
+      setAnalytics(data.analytics || null)
+    } catch (e) {}
+  }
+
+  const fetchQueue = async (status = queueStatus, page = queuePage) => {
+    try {
+      const { data } = await axios.get(
+        `${API}/queue?status=${status}&page=${page}&limit=25`,
+      )
+      setQueue({
+        items: data.items || [],
+        total: data.total || 0,
+        page: data.page || 1,
+        pages: data.pages || 1,
+      })
+    } catch (e) {}
+  }
+
+  const fetchDashboardAll = async () => {
+    await Promise.all([fetchAnalytics(), fetchQueue()])
+  }
+
+  const markLead = async (leadId, action) => {
+    if (!leadId) return
+    try {
+      await axios.post(`${API}/leads/${leadId}/${action}`)
+      await fetchDashboardAll()
+    } catch (err) {
+      alert(
+        `Failed to mark lead ${action}: ` +
+          (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  // Load dashboard data once authenticated (fires after login, not just on
+  // mount — a pre-auth fetch would 401 and leave the dashboard empty).
+  useEffect(() => {
+    if (authed && tab === 'dashboard') fetchDashboardAll()
+  }, [authed])
 
   // ── Campaigns ──
   const fetchCampaigns = async () => {
@@ -439,10 +496,6 @@ export default function App() {
     }
   }, [upworkSettings])
 
-  const pending = leads.filter((l) => !l.status).length
-  const emailed = leads.filter((l) => l.status === 'Emailed').length
-  const failed = leads.filter((l) => l.status === 'Failed').length
-
   if (!authed) return <LoginScreen onSuccess={() => setAuthed(true)} />
 
   return (
@@ -460,7 +513,10 @@ export default function App() {
         <nav>
           <button
             className={tab === 'dashboard' ? 'nav-item active' : 'nav-item'}
-            onClick={() => setTab('dashboard')}
+            onClick={() => {
+              setTab('dashboard')
+              fetchDashboardAll()
+            }}
           >
             <span className='nav-icon'>◈</span> Dashboard
           </button>
@@ -529,46 +585,278 @@ export default function App() {
               <p>Automate personalized cold emails powered by AI</p>
             </div>
 
-            {/* Stats */}
+            {/* Stat cards — queue-level sends + lead-level rates */}
             <div className='stats-grid'>
-              <div className='stat-card'>
-                <span className='stat-num'>{leads.length}</span>
-                <span className='stat-label'>Total Leads</span>
+              <div className='stat-card stat-emailed'>
+                <span className='stat-num'>
+                  {analytics ? analytics.cards.sent : 0}
+                </span>
+                <span className='stat-label'>Sent</span>
               </div>
               <div className='stat-card stat-pending'>
-                <span className='stat-num'>{pending}</span>
+                <span className='stat-num'>
+                  {analytics ? analytics.cards.pending : 0}
+                </span>
                 <span className='stat-label'>Pending</span>
               </div>
-              <div className='stat-card stat-emailed'>
-                <span className='stat-num'>{emailed}</span>
-                <span className='stat-label'>Emailed</span>
-              </div>
               <div className='stat-card stat-failed'>
-                <span className='stat-num'>{failed}</span>
+                <span className='stat-num'>
+                  {analytics ? analytics.cards.failed : 0}
+                </span>
                 <span className='stat-label'>Failed</span>
+              </div>
+              <div className='stat-card'>
+                <span className='stat-num'>
+                  {analytics ? analytics.cards.replies : 0}
+                </span>
+                <span className='stat-label'>Replies</span>
+              </div>
+              <div className='stat-card'>
+                <span className='stat-num'>
+                  {analytics
+                    ? (analytics.cards.bounceRate * 100).toFixed(1) + '%'
+                    : 0}
+                </span>
+                <span className='stat-label'>Bounce %</span>
+              </div>
+              <div className='stat-card'>
+                <span className='stat-num'>
+                  {analytics
+                    ? (analytics.cards.replyRate * 100).toFixed(1) + '%'
+                    : 0}
+                </span>
+                <span className='stat-label'>Reply %</span>
               </div>
             </div>
 
-            {/* Campaigns now own sending — see the Campaigns tab to launch and
-                control outreach. */}
-            <div className='card'>
-              <h2>Campaigns</h2>
-              <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
-                Leads flow through campaigns. Create and control them from the
-                Campaigns tab.
-              </p>
-              <div style={{ marginTop: '1rem', display: 'flex', gap: '0.75rem' }}>
+            {/* Mailbox health */}
+            <div className='card table-card'>
+              <div
+                className='bulk-actions'
+                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2 style={{ margin: 0 }}>Mailbox Health</h2>
+                <button className='btn-ghost' onClick={fetchDashboardAll}>
+                  ↻ Refresh
+                </button>
+              </div>
+              {!analytics || analytics.mailboxes.length === 0 ? (
+                <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                  No mailboxes configured.
+                </p>
+              ) : (
+                <div className='table-wrapper'>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Mailbox</th>
+                        <th>Health</th>
+                        <th>Today</th>
+                        <th>Paused Until</th>
+                        <th>Last Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analytics.mailboxes.map((mb) => (
+                        <tr key={mb._id}>
+                          <td className='td-email'>{mb.email}</td>
+                          <td>
+                            <span
+                              className={`status-badge health-${mb.healthStatus || 'healthy'}`}
+                            >
+                              {mb.healthStatus || 'healthy'}
+                            </span>
+                          </td>
+                          <td>
+                            {mb.sentToday || 0} / {mb.effectiveDailyCap}
+                          </td>
+                          <td>{mb.pausedUntil ? fmtDate(mb.pausedUntil) : '—'}</td>
+                          <td
+                            className='cell-trunc'
+                            title={mb.lastError || ''}
+                          >
+                            {trunc(mb.lastError, 40) || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Campaign performance */}
+            <div className='card table-card'>
+              <h2 style={{ margin: 0 }}>Campaign Performance</h2>
+              {!analytics || analytics.campaigns.length === 0 ? (
+                <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                  No campaigns yet.
+                </p>
+              ) : (
+                <div className='table-wrapper'>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Pending</th>
+                        <th>Sent</th>
+                        <th>Failed</th>
+                        <th>Cancelled</th>
+                        <th>Daily Limit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analytics.campaigns.map((c) => {
+                        const counts = c.counts || {}
+                        return (
+                          <tr key={c._id}>
+                            <td>{c.name}</td>
+                            <td>
+                              <span className={`status-badge badge-${c.status}`}>
+                                {c.status}
+                              </span>
+                            </td>
+                            <td>{counts.pending || 0}</td>
+                            <td>{counts.sent || 0}</td>
+                            <td>{counts.failed || 0}</td>
+                            <td>{counts.cancelled || 0}</td>
+                            <td>{c.dailyLimit || 0}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Live queue */}
+            <div className='card table-card'>
+              <div
+                className='bulk-actions'
+                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2 style={{ margin: 0 }}>Live Queue</h2>
+                <div className='queue-controls'>
+                  <select
+                    value={queueStatus}
+                    onChange={(e) => {
+                      const s = e.target.value
+                      setQueueStatus(s)
+                      setQueuePage(1)
+                      fetchQueue(s, 1)
+                    }}
+                  >
+                    <option value=''>All statuses</option>
+                    <option value='pending'>pending</option>
+                    <option value='scheduled'>scheduled</option>
+                    <option value='sending'>sending</option>
+                    <option value='sent'>sent</option>
+                    <option value='failed'>failed</option>
+                    <option value='bounced'>bounced</option>
+                    <option value='cancelled'>cancelled</option>
+                  </select>
+                  <button
+                    className='btn-ghost'
+                    onClick={() => fetchQueue(queueStatus, queuePage)}
+                  >
+                    ↻ Refresh
+                  </button>
+                </div>
+              </div>
+              {queue.items.length === 0 ? (
+                <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                  No queued emails.
+                </p>
+              ) : (
+                <div className='table-wrapper'>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Lead</th>
+                        <th>Campaign</th>
+                        <th>Status</th>
+                        <th>Scheduled</th>
+                        <th>Sent</th>
+                        <th>Error</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {queue.items.map((item) => (
+                        <tr key={item._id}>
+                          <td className='td-email'>{item.leadEmail || '—'}</td>
+                          <td>{item.campaignName || '—'}</td>
+                          <td>
+                            <span className={`status-badge badge-${item.status}`}>
+                              {item.status}
+                            </span>
+                          </td>
+                          <td>{fmtDate(item.scheduledAt)}</td>
+                          <td>{fmtDate(item.sentAt)}</td>
+                          <td
+                            className='cell-trunc'
+                            title={item.errorMessage || ''}
+                          >
+                            {trunc(item.errorMessage, 40) || '—'}
+                          </td>
+                          <td>
+                            <div className='queue-controls'>
+                              {item.status === 'sent' && (
+                                <button
+                                  className='btn-preview'
+                                  onClick={() =>
+                                    markLead(item.leadId, 'replied')
+                                  }
+                                >
+                                  Mark replied
+                                </button>
+                              )}
+                              {(item.status === 'sent' ||
+                                item.status === 'bounced') && (
+                                <button
+                                  className='btn-ghost'
+                                  onClick={() =>
+                                    markLead(item.leadId, 'bounced')
+                                  }
+                                >
+                                  Mark bounced
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className='queue-pagination'>
                 <button
-                  className='btn-start'
+                  className='btn-ghost'
+                  disabled={queue.page <= 1}
                   onClick={() => {
-                    setTab('campaigns')
-                    fetchCampaignsAll()
+                    const p = queue.page - 1
+                    setQueuePage(p)
+                    fetchQueue(queueStatus, p)
                   }}
                 >
-                  Go to Campaigns
+                  ← Prev
                 </button>
-                <button className='btn-ghost' onClick={fetchLeads}>
-                  ↻ Refresh
+                <span className='queue-page-label'>
+                  Page {queue.page} of {queue.pages}
+                </span>
+                <button
+                  className='btn-ghost'
+                  disabled={queue.page >= queue.pages}
+                  onClick={() => {
+                    const p = queue.page + 1
+                    setQueuePage(p)
+                    fetchQueue(queueStatus, p)
+                  }}
+                >
+                  Next →
                 </button>
               </div>
             </div>

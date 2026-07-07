@@ -30,6 +30,7 @@ const {
   sanitize,
   pause,
   resume,
+  effectiveDailyCap,
 } = require('../services/mailboxService')
 const { providerFor } = require('../services/smtp')
 
@@ -936,5 +937,180 @@ for (const action of ['pause', 'resume', 'stop']) {
     }
   })
 }
+
+// ── Dashboard analytics + live queue (T-012) ──
+
+const QUEUE_STATUSES = [
+  'pending',
+  'scheduled',
+  'sending',
+  'sent',
+  'failed',
+  'bounced',
+  'cancelled',
+]
+
+// GET /api/analytics — dashboard summary: cards, rates, per-status tallies,
+// campaign performance and mailbox health.
+router.get('/analytics', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const [queueCounts, leadCounts, campaignDocs, counts, mailboxDocs] =
+      await Promise.all([
+        campaignService.queueCountsByStatus(),
+        campaignService.leadCountsByStatus(),
+        Campaign.find().select('name status dailyLimit').lean(),
+        campaignService.countsByCampaign(),
+        Mailbox.find(),
+      ])
+
+    // Sent card is queue-level (per-send); rates are lead-level (per-lead) —
+    // intentional: one lead can span multiple sends across steps.
+    const delivered = leadCounts.contacted + leadCounts.replied
+    const rates = {
+      replyRate: delivered > 0 ? leadCounts.replied / delivered : 0,
+      bounceRate:
+        delivered + leadCounts.bounced > 0
+          ? leadCounts.bounced / (delivered + leadCounts.bounced)
+          : 0,
+    }
+
+    const cards = {
+      sent: queueCounts.sent,
+      pending: queueCounts.pending + queueCounts.scheduled + queueCounts.sending,
+      failed: queueCounts.failed,
+      replies: leadCounts.replied,
+      replyRate: rates.replyRate,
+      bounceRate: rates.bounceRate,
+    }
+
+    const campaigns = campaignDocs.map((c) => ({
+      _id: c._id,
+      name: c.name,
+      status: c.status,
+      dailyLimit: c.dailyLimit,
+      counts: counts[String(c._id)] || {},
+    }))
+
+    const mailboxes = mailboxDocs.map((mb) => ({
+      ...sanitize(mb),
+      effectiveDailyCap: effectiveDailyCap(mb),
+    }))
+
+    res.json({
+      success: true,
+      analytics: {
+        cards,
+        rates,
+        queueCounts,
+        leadCounts,
+        campaigns,
+        mailboxes,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/queue — paginated queued emails, optionally filtered by status.
+router.get('/queue', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25))
+    const filter = QUEUE_STATUSES.includes(req.query.status)
+      ? { status: req.query.status }
+      : {}
+
+    const [docs, total] = await Promise.all([
+      QueuedEmail.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('leadId', 'email')
+        .populate('campaignId', 'name')
+        .lean(),
+      QueuedEmail.countDocuments(filter),
+    ])
+
+    const pages = Math.max(1, Math.ceil(total / limit))
+    const items = docs.map((item) => ({
+      _id: item._id,
+      status: item.status,
+      scheduledAt: item.scheduledAt,
+      sentAt: item.sentAt,
+      createdAt: item.createdAt,
+      errorMessage: item.errorMessage,
+      leadId: item.leadId && item.leadId._id,
+      leadEmail: item.leadId && item.leadId.email,
+      campaignName: item.campaignId && item.campaignId.name,
+    }))
+
+    res.json({ success: true, items, total, page, pages })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/leads/:id/replied — mark a lead as having replied.
+router.post('/leads/:id/replied', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    lead.status = 'replied'
+    lead.replyStatus = (req.body && req.body.note) || 'manual'
+    await lead.save()
+    res.json({ success: true, lead })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/leads/:id/bounced — mark a lead as bounced.
+router.post('/leads/:id/bounced', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    lead.status = 'bounced'
+    lead.bounceStatus = (req.body && req.body.note) || 'manual'
+    await lead.save()
+    res.json({ success: true, lead })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
 
 module.exports = router

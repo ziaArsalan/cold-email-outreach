@@ -87,14 +87,14 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-012] Analytics dashboard + queue/mailbox visibility
 - priority: P2
-- status: todo
+- status: done
 - area: both
 - description: Phase 6 of [OUTREACH-V2.md](.claude/docs/OUTREACH-V2.md) (§Analytics). Server: `GET /api/analytics` (sent/pending/failed counts, reply + bounce rates, per-campaign performance, per-mailbox health + today's counts vs limits), `GET /api/queue` (paginated queue with status filter), endpoints to mark a lead replied/bounced manually. Client: dashboard cards (Sent, Pending, Failed, Replies, Bounce %, Reply %), mailbox health table, campaign performance table, live queue view.
 - acceptance:
-  - [ ] Dashboard shows accurate counts matching Mongo state after a test campaign run
-  - [ ] Mailbox table shows each box's health, sentToday vs dailyLimit, and pausedUntil when paused
-  - [ ] Marking a lead as Replied updates reply rate; a bounced send updates bounce rate
-  - [ ] Queue view filters by status and shows scheduledAt/sentAt/error per item
+  - [x] Dashboard shows accurate counts matching Mongo state after a test campaign run
+  - [x] Mailbox table shows each box's health, sentToday vs dailyLimit, and pausedUntil when paused
+  - [x] Marking a lead as Replied updates reply rate; a bounced send updates bounce rate
+  - [x] Queue view filters by status and shows scheduledAt/sentAt/error per item
 
 ## [T-013] Deliverability polish + sending-domain guide
 - priority: P2

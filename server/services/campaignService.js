@@ -197,6 +197,44 @@ const countsByCampaign = async () => {
   return out
 }
 
+// Global queue tallies by status → { pending, scheduled, ... } with every enum
+// key present (missing statuses default to 0) for the dashboard cards.
+const queueCountsByStatus = async () => {
+  const out = {
+    pending: 0,
+    scheduled: 0,
+    sending: 0,
+    sent: 0,
+    failed: 0,
+    bounced: 0,
+    cancelled: 0,
+  }
+  const rows = await QueuedEmail.aggregate([
+    { $group: { _id: '$status', n: { $sum: 1 } } },
+  ])
+  for (const r of rows) if (r._id in out) out[r._id] = r.n
+  return out
+}
+
+// Global lead tallies by status, every enum key present (missing = 0). Used for
+// the lead-level reply/bounce rates on the dashboard.
+const leadCountsByStatus = async () => {
+  const out = {
+    new: 0,
+    queued: 0,
+    contacted: 0,
+    replied: 0,
+    bounced: 0,
+    unsubscribed: 0,
+    failed: 0,
+  }
+  const rows = await Lead.aggregate([
+    { $group: { _id: '$status', n: { $sum: 1 } } },
+  ])
+  for (const r of rows) if (r._id in out) out[r._id] = r.n
+  return out
+}
+
 module.exports = {
   targetLeads,
   start,
@@ -206,4 +244,6 @@ module.exports = {
   isWithinWindow,
   sentTodayCount,
   countsByCampaign,
+  queueCountsByStatus,
+  leadCountsByStatus,
 }
