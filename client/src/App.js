@@ -188,6 +188,11 @@ export default function App() {
   const [queueStatus, setQueueStatus] = useState('')
   const [queuePage, setQueuePage] = useState(1)
 
+  // Mailbox management (add/edit/test/pause)
+  const [mailboxForm, setMailboxForm] = useState(null) // null = closed; {} = new; {...mb} = editing
+  const [mailboxBusy, setMailboxBusy] = useState(false)
+  const [mailboxTestResult, setMailboxTestResult] = useState(null) // { id, success, warnings }
+
   const logout = () => {
     localStorage.removeItem('token')
     delete axios.defaults.headers.common['Authorization']
@@ -257,6 +262,131 @@ export default function App() {
   useEffect(() => {
     if (authed && tab === 'dashboard') fetchDashboardAll()
   }, [authed])
+
+  // ── Mailboxes (add / edit / test / pause / warm-up) ──
+  const BLANK_MAILBOX = {
+    name: '',
+    email: '',
+    host: '',
+    port: 465,
+    secure: true,
+    username: '',
+    password: '',
+    dailyLimit: 50,
+    hourlyLimit: 10,
+    warmupEnabled: true,
+    warmupStartDate: new Date().toISOString().slice(0, 10),
+  }
+
+  const openNewMailboxForm = () => {
+    setMailboxTestResult(null)
+    setMailboxForm({ ...BLANK_MAILBOX })
+  }
+
+  const openEditMailboxForm = (mb) => {
+    setMailboxTestResult(null)
+    setMailboxForm({
+      _id: mb._id,
+      name: mb.name || '',
+      email: mb.email || '',
+      host: mb.host || '',
+      port: mb.port || 465,
+      secure: mb.secure !== false,
+      username: mb.username || '',
+      password: '', // never prefilled — blank means "keep existing"
+      dailyLimit: mb.dailyLimit ?? 50,
+      hourlyLimit: mb.hourlyLimit ?? 10,
+      warmupEnabled: mb.warmupEnabled !== false,
+      warmupStartDate: mb.warmupStartDate
+        ? new Date(mb.warmupStartDate).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
+    })
+  }
+
+  const closeMailboxForm = () => {
+    setMailboxForm(null)
+    setMailboxTestResult(null)
+  }
+
+  const saveMailbox = async (e) => {
+    e.preventDefault()
+    if (!mailboxForm) return
+    setMailboxBusy(true)
+    try {
+      const payload = {
+        name: mailboxForm.name,
+        email: mailboxForm.email,
+        host: mailboxForm.host,
+        port: Number(mailboxForm.port),
+        secure: !!mailboxForm.secure,
+        username: mailboxForm.username,
+        dailyLimit: Number(mailboxForm.dailyLimit),
+        hourlyLimit: Number(mailboxForm.hourlyLimit),
+        warmupEnabled: !!mailboxForm.warmupEnabled,
+        warmupStartDate: mailboxForm.warmupEnabled
+          ? mailboxForm.warmupStartDate
+          : null,
+      }
+      // Only send a password when the user actually typed one — on edit, a
+      // blank field means "keep the existing password" (never overwrite with '').
+      if (mailboxForm.password) payload.password = mailboxForm.password
+
+      if (mailboxForm._id) {
+        await axios.put(`${API}/mailboxes/${mailboxForm._id}`, payload)
+      } else {
+        await axios.post(`${API}/mailboxes`, payload)
+      }
+      closeMailboxForm()
+      await Promise.all([fetchMailboxes(), fetchDashboardAll()])
+    } catch (err) {
+      alert(
+        'Failed to save mailbox: ' +
+          (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setMailboxBusy(false)
+    }
+  }
+
+  const testMailbox = async (id) => {
+    setMailboxBusy(true)
+    try {
+      const { data } = await axios.post(`${API}/mailboxes/${id}/test`)
+      setMailboxTestResult({
+        id,
+        success: data.success,
+        warnings: data.warnings || [],
+      })
+      await Promise.all([fetchMailboxes(), fetchDashboardAll()])
+    } catch (err) {
+      alert(
+        'Failed to test mailbox: ' +
+          (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setMailboxBusy(false)
+    }
+  }
+
+  const toggleMailboxPause = async (mb) => {
+    setMailboxBusy(true)
+    try {
+      const paused = mb.healthStatus === 'paused'
+      const action = paused ? 'resume' : 'pause'
+      // Manual pause defaults to 24h (vs. the short rate-limit backoff the
+      // worker itself uses) so it doesn't silently resume mid-review.
+      const body = paused ? {} : { minutes: 1440, reason: 'manual pause' }
+      await axios.post(`${API}/mailboxes/${mb._id}/${action}`, body)
+      await Promise.all([fetchMailboxes(), fetchDashboardAll()])
+    } catch (err) {
+      alert(
+        `Failed to ${mb.healthStatus === 'paused' ? 'resume' : 'pause'} mailbox: ` +
+          (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setMailboxBusy(false)
+    }
+  }
 
   // ── Campaigns ──
   const fetchCampaigns = async () => {
@@ -629,20 +759,246 @@ export default function App() {
               </div>
             </div>
 
-            {/* Mailbox health */}
+            {/* Mailboxes */}
             <div className='card table-card'>
               <div
                 className='bulk-actions'
                 style={{ justifyContent: 'space-between', alignItems: 'center' }}
               >
-                <h2 style={{ margin: 0 }}>Mailbox Health</h2>
-                <button className='btn-ghost' onClick={fetchDashboardAll}>
-                  ↻ Refresh
-                </button>
+                <h2 style={{ margin: 0 }}>Mailboxes</h2>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button className='btn-ghost' onClick={fetchDashboardAll}>
+                    ↻ Refresh
+                  </button>
+                  <button className='btn-start' onClick={openNewMailboxForm}>
+                    + Add Mailbox
+                  </button>
+                </div>
               </div>
+
+              {mailboxForm && (
+                <form
+                  onSubmit={saveMailbox}
+                  className='card'
+                  style={{ margin: '0 0 1rem', background: 'var(--bg-alt)' }}
+                >
+                  <h3 style={{ marginTop: 0 }}>
+                    {mailboxForm._id ? 'Edit Mailbox' : 'New Mailbox'}
+                  </h3>
+                  <div className='settings-fields-grid'>
+                    <div className='control-group'>
+                      <label>Label / Name</label>
+                      <input
+                        value={mailboxForm.name}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({ ...f, name: e.target.value }))
+                        }
+                        placeholder='Alex'
+                        required
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Email (From address)</label>
+                      <input
+                        type='email'
+                        value={mailboxForm.email}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({ ...f, email: e.target.value }))
+                        }
+                        placeholder='alex@meetdevtronics.com'
+                        required
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>SMTP Host</label>
+                      <input
+                        value={mailboxForm.host}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({ ...f, host: e.target.value }))
+                        }
+                        placeholder='mail.privateemail.com'
+                        required
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Port</label>
+                      <input
+                        type='number'
+                        value={mailboxForm.port}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({ ...f, port: e.target.value }))
+                        }
+                        required
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>
+                        <input
+                          type='checkbox'
+                          checked={mailboxForm.secure}
+                          onChange={(e) =>
+                            setMailboxForm((f) => ({
+                              ...f,
+                              secure: e.target.checked,
+                            }))
+                          }
+                        />{' '}
+                        Secure (TLS/SSL, usually port 465)
+                      </label>
+                    </div>
+                    <div className='control-group'>
+                      <label>SMTP Username</label>
+                      <input
+                        value={mailboxForm.username}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({
+                            ...f,
+                            username: e.target.value,
+                          }))
+                        }
+                        placeholder='usually same as email'
+                        required
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>
+                        Password{' '}
+                        {mailboxForm._id && (
+                          <span className='field-note'>
+                            (leave blank to keep existing)
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type='password'
+                        value={mailboxForm.password}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({
+                            ...f,
+                            password: e.target.value,
+                          }))
+                        }
+                        required={!mailboxForm._id}
+                        autoComplete='new-password'
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Daily Limit</label>
+                      <input
+                        type='number'
+                        min='0'
+                        value={mailboxForm.dailyLimit}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({
+                            ...f,
+                            dailyLimit: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Hourly Limit</label>
+                      <input
+                        type='number'
+                        min='0'
+                        value={mailboxForm.hourlyLimit}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({
+                            ...f,
+                            hourlyLimit: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>
+                        <input
+                          type='checkbox'
+                          checked={mailboxForm.warmupEnabled}
+                          onChange={(e) =>
+                            setMailboxForm((f) => ({
+                              ...f,
+                              warmupEnabled: e.target.checked,
+                            }))
+                          }
+                        />{' '}
+                        Warm-up enabled
+                      </label>
+                      <span className='field-note'>
+                        Ramps the daily cap 5→10→20→30→40→50 over 4 weeks from
+                        the start date below, then uses the plain Daily Limit.
+                      </span>
+                    </div>
+                    {mailboxForm.warmupEnabled && (
+                      <div className='control-group'>
+                        <label>Warm-up Start Date</label>
+                        <input
+                          type='date'
+                          value={mailboxForm.warmupStartDate}
+                          onChange={(e) =>
+                            setMailboxForm((f) => ({
+                              ...f,
+                              warmupStartDate: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: '1rem',
+                      display: 'flex',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <button
+                      className='btn-start'
+                      type='submit'
+                      disabled={mailboxBusy}
+                    >
+                      {mailboxBusy
+                        ? 'Saving…'
+                        : mailboxForm._id
+                          ? 'Save Changes'
+                          : '+ Create Mailbox'}
+                    </button>
+                    <button
+                      className='btn-ghost'
+                      type='button'
+                      onClick={closeMailboxForm}
+                      disabled={mailboxBusy}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {mailboxTestResult && (
+                <p
+                  style={{
+                    fontSize: '13px',
+                    color: mailboxTestResult.success
+                      ? 'var(--success, #2e7d32)'
+                      : 'var(--danger, #c62828)',
+                  }}
+                >
+                  {mailboxTestResult.success
+                    ? '✓ Connection verified.'
+                    : '✗ Connection failed.'}
+                  {mailboxTestResult.warnings.length > 0 && (
+                    <>
+                      {' '}
+                      Warnings: {mailboxTestResult.warnings.join('; ')}
+                    </>
+                  )}
+                </p>
+              )}
+
               {!analytics || analytics.mailboxes.length === 0 ? (
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
-                  No mailboxes configured.
+                  No mailboxes configured. Click "+ Add Mailbox" to add one.
                 </p>
               ) : (
                 <div className='table-wrapper'>
@@ -652,8 +1008,10 @@ export default function App() {
                         <th>Mailbox</th>
                         <th>Health</th>
                         <th>Today</th>
+                        <th>Warm-up</th>
                         <th>Paused Until</th>
                         <th>Last Error</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -670,12 +1028,44 @@ export default function App() {
                           <td>
                             {mb.sentToday || 0} / {mb.effectiveDailyCap}
                           </td>
+                          <td>
+                            {mb.warmupEnabled
+                              ? `On (since ${fmtDate(mb.warmupStartDate).split(',')[0]})`
+                              : 'Off'}
+                          </td>
                           <td>{mb.pausedUntil ? fmtDate(mb.pausedUntil) : '—'}</td>
                           <td
                             className='cell-trunc'
                             title={mb.lastError || ''}
                           >
                             {trunc(mb.lastError, 40) || '—'}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button
+                                className='btn-ghost'
+                                disabled={mailboxBusy}
+                                onClick={() => testMailbox(mb._id)}
+                              >
+                                Test
+                              </button>
+                              <button
+                                className='btn-ghost'
+                                disabled={mailboxBusy}
+                                onClick={() => openEditMailboxForm(mb)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className='btn-ghost'
+                                disabled={mailboxBusy}
+                                onClick={() => toggleMailboxPause(mb)}
+                              >
+                                {mb.healthStatus === 'paused'
+                                  ? 'Resume'
+                                  : 'Pause'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}

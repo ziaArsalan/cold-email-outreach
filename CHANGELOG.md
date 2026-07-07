@@ -4,6 +4,11 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-07-07 — Mailbox management UI (ad hoc, outside /task pipeline)
+- **Added:** Dashboard "Mailboxes" card gains an Add/Edit form (name, email, host, port, secure, username, password, daily/hourly limits, warm-up toggle + start date) and per-row Test/Edit/Pause-Resume actions — wired entirely to the existing T-009 `/api/mailboxes*` endpoints, no new server routes. Editing with a blank password keeps the mailbox's existing password (field is never prefilled). Manual Pause defaults to 24h. Warm-up column shows On/Off + start date in the table.
+- **Area:** client
+- **QA:** verified via live API calls simulating the exact client flow (create with warm-up → edit to disable/re-enable warm-up → edit without touching password → test with bad creds → pause → resume → confirm in `/api/analytics`), plus a clean CRA production build. No task id — requested directly by the user, not from `tasks.md`.
+
 ### 2026-07-07 — [T-013] Deliverability polish + sending-domain guide
 - **Added:** `server/services/deliverabilityService.js` — `validateBody` (non-empty, ≤1 link, no images/data URIs), `countLinks`, `domainOf`, `domainMismatch`. Campaign start now validates the composed template (body + signature) once before the enqueue loop and rejects with a clear 400 (`Template fails deliverability rules: …`) — no partial enqueue. Campaign model gains `htmlEnabled` (default **false**): the worker sends pure plain text unless a campaign opts into HTML; `NodemailerProvider` no longer fabricates an HTML part from text (new exported `buildMailOptions` sets `html` only when explicitly passed). `POST /api/mailboxes/:id/test` returns `warnings[]` when the mailbox From-domain ≠ SMTP-auth domain (SPF/DKIM alignment); boot-time warn for the legacy env pair. New `.claude/docs/DELIVERABILITY.md`: copy-pasteable SPF (`v=spf1 include:spf.privateemail.com ~all`), DKIM (Namecheap PE `default` selector), and DMARC (`p=none` → `p=quarantine`) records for meetdevtronics.com + devtronics.co, warm-up table, unsubscribe note. Legacy Sheets `sendEmail` keeps its HTML part intentionally.
 - **Area:** server
