@@ -811,6 +811,15 @@ const validateCampaign = (body, partial) => {
     return 'aiPrompt must be a string'
   if (body.mailboxIds !== undefined && !Array.isArray(body.mailboxIds))
     return 'mailboxIds must be an array'
+  if (body.steps !== undefined) {
+    if (!Array.isArray(body.steps)) return 'steps must be an array'
+    for (const s of body.steps) {
+      if (!s || typeof s.templateId !== 'string' || !s.templateId.trim())
+        return 'each step must have a non-empty templateId'
+      if (typeof s.delayDays !== 'number' || s.delayDays < 0)
+        return 'each step delayDays must be a number >= 0'
+    }
+  }
   if (
     body.dailyLimit !== undefined &&
     (typeof body.dailyLimit !== 'number' || body.dailyLimit < 0)
@@ -837,6 +846,7 @@ const campaignFields = (body) => {
   const fields = [
     'name',
     'templateId',
+    'steps',
     'aiPrompt',
     'mailboxIds',
     'dailyLimit',
@@ -844,6 +854,13 @@ const campaignFields = (body) => {
     'schedule',
   ]
   for (const f of fields) if (body[f] !== undefined) out[f] = body[f]
+  // Normalize step order to positional index so the sequence is unambiguous.
+  if (out.steps)
+    out.steps = out.steps.map((s, i) => ({
+      order: i,
+      templateId: s.templateId,
+      delayDays: Number(s.delayDays) || 0,
+    }))
   return out
 }
 
@@ -861,6 +878,7 @@ router.get('/campaigns', async (req, res) => {
     const campaigns = docs.map((c) => ({
       ...c.toObject(),
       counts: counts[String(c._id)] || {},
+      stepCount: (c.steps && c.steps.length) || 1,
     }))
     res.json({ success: true, campaigns })
   } catch (err) {
@@ -1082,6 +1100,7 @@ router.get('/queue', async (req, res) => {
     const items = docs.map((item) => ({
       _id: item._id,
       status: item.status,
+      stepIndex: item.stepIndex || 0,
       scheduledAt: item.scheduledAt,
       sentAt: item.sentAt,
       createdAt: item.createdAt,

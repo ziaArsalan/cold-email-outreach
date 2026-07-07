@@ -61,6 +61,7 @@ const statusColor = (s) => {
 const BLANK_CAMPAIGN = {
   name: '',
   templateId: '',
+  steps: [],
   aiPrompt: '',
   mailboxIds: [],
   dailyLimit: 20,
@@ -525,7 +526,20 @@ export default function App() {
           endTime: newCampaign.endTime,
         },
       }
-      if (newCampaign.templateId) payload.templateId = newCampaign.templateId
+      if (newCampaign.templateId) {
+        payload.templateId = newCampaign.templateId
+        // Build the full sequence: step 0 is the initial email, then any
+        // follow-ups with a chosen template. Omit steps entirely when no
+        // initial template is picked, preserving the single-email behavior.
+        const followups = newCampaign.steps.filter((s) => s.templateId)
+        payload.steps = [
+          { templateId: newCampaign.templateId, delayDays: 0 },
+          ...followups.map((s) => ({
+            templateId: s.templateId,
+            delayDays: Number(s.delayDays) || 0,
+          })),
+        ]
+      }
       await axios.post(`${API}/campaigns`, payload)
       setNewCampaign(BLANK_CAMPAIGN)
       await fetchCampaigns()
@@ -567,6 +581,26 @@ export default function App() {
         : [...c.mailboxIds, id],
     }))
   }
+
+  // Follow-up sequence editing (steps are follow-ups only; step 0 = the main
+  // Template dropdown above).
+  const addFollowup = () =>
+    setNewCampaign((c) => ({
+      ...c,
+      steps: [...c.steps, { templateId: '', delayDays: 3 }],
+    }))
+
+  const updateFollowup = (i, patch) =>
+    setNewCampaign((c) => ({
+      ...c,
+      steps: c.steps.map((s, idx) => (idx === i ? { ...s, ...patch } : s)),
+    }))
+
+  const removeFollowup = (i) =>
+    setNewCampaign((c) => ({
+      ...c,
+      steps: c.steps.filter((_, idx) => idx !== i),
+    }))
 
   const testSmtp = async () => {
     setSmtpStatus('testing')
@@ -1274,6 +1308,7 @@ export default function App() {
                       <tr>
                         <th>Lead</th>
                         <th>Campaign</th>
+                        <th>Step</th>
                         <th>Status</th>
                         <th>Scheduled</th>
                         <th>Sent</th>
@@ -1286,6 +1321,7 @@ export default function App() {
                         <tr key={item._id}>
                           <td className='td-email'>{item.leadEmail || '—'}</td>
                           <td>{item.campaignName || '—'}</td>
+                          <td>{(item.stepIndex || 0) + 1}</td>
                           <td>
                             <span className={`status-badge badge-${item.status}`}>
                               {item.status}
@@ -1400,6 +1436,7 @@ export default function App() {
                             </span>
                           </div>
                           <div className='campaign-meta'>
+                            <span>{c.stepCount || 1} step(s)</span>
                             <span>pending {counts.pending || 0}</span>
                             <span>sent {counts.sent || 0}</span>
                             <span>cancelled {counts.cancelled || 0}</span>
@@ -1477,7 +1514,7 @@ export default function App() {
                     />
                   </div>
                   <div className='control-group'>
-                    <label>Template</label>
+                    <label>Template (Step 1 — Initial email)</label>
                     <select
                       value={newCampaign.templateId}
                       onChange={(e) =>
@@ -1494,6 +1531,60 @@ export default function App() {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className='control-group full-width'>
+                    <label>Follow-up steps (optional)</label>
+                    {newCampaign.steps.length === 0 ? (
+                      <span className='field-note'>
+                        No follow-ups. Add one to send a sequence after the
+                        initial email.
+                      </span>
+                    ) : (
+                      newCampaign.steps.map((s, i) => (
+                        <div key={i} className='checkbox-row'>
+                          <span className='field-note'>Step {i + 2}</span>
+                          <select
+                            value={s.templateId}
+                            onChange={(e) =>
+                              updateFollowup(i, { templateId: e.target.value })
+                            }
+                          >
+                            <option value=''>Select a template…</option>
+                            {templates.map((t) => (
+                              <option key={t._id} value={t._id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <span className='field-note'>wait</span>
+                          <input
+                            type='number'
+                            min='0'
+                            style={{ width: '5rem' }}
+                            value={s.delayDays}
+                            onChange={(e) =>
+                              updateFollowup(i, { delayDays: e.target.value })
+                            }
+                          />
+                          <span className='field-note'>days</span>
+                          <button
+                            type='button'
+                            className='btn-ghost'
+                            onClick={() => removeFollowup(i)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))
+                    )}
+                    <button
+                      type='button'
+                      className='btn-ghost'
+                      onClick={addFollowup}
+                      disabled={!newCampaign.templateId}
+                    >
+                      + Add follow-up
+                    </button>
                   </div>
                   <div className='control-group'>
                     <label>Daily Limit</label>

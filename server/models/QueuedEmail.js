@@ -6,6 +6,7 @@ const queuedEmailSchema = new mongoose.Schema(
     campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign' },
     leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead' },
     mailboxId: { type: mongoose.Schema.Types.ObjectId, ref: 'Mailbox' },
+    stepIndex: { type: Number, default: 0 },
     subject: String,
     body: String,
     status: {

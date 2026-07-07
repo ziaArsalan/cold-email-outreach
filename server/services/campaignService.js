@@ -29,6 +29,44 @@ const startOfDay = (now = new Date()) => {
   return d
 }
 
+// The campaign's steps as an ordered array. A campaign with explicit steps →
+// a copy sorted by order; otherwise a single synthetic step-0 wrapping the
+// legacy templateId (delay 0), so no-sequence campaigns behave exactly as before.
+const normalizeSteps = (campaign) => {
+  if (campaign.steps && campaign.steps.length)
+    return [...campaign.steps].sort((a, b) => a.order - b.order)
+  return [{ order: 0, templateId: campaign.templateId, delayDays: 0 }]
+}
+
+// Render + enqueue one step for a lead. Reuses the lead's cached aiIntro (no AI
+// call here — step 0's start() already primes it). scheduledAt null = immediate.
+const enqueueStepForLead = async (campaign, lead, stepIndex, scheduledAt) => {
+  const step = normalizeSteps(campaign)[stepIndex]
+  const template = await Template.findById(step.templateId)
+  if (!template) throw badRequest(`Step ${stepIndex + 1} template not found`)
+
+  const vars = {
+    first_name: lead.firstName || '',
+    last_name: lead.lastName || '',
+    company: lead.company || '',
+    industry: lead.industry || '',
+    website: lead.website || '',
+    ai_intro: lead.aiIntro || '',
+  }
+  const subject = render(template.subject, vars)
+  let body = render(template.body, vars)
+  if (template.signature) body += '\n\n' + render(template.signature, vars)
+
+  return enqueue({
+    campaignId: campaign._id,
+    leadId: lead._id,
+    subject,
+    body,
+    stepIndex,
+    scheduledAt,
+  })
+}
+
 // Resolve which leads a campaign should target. Explicit leadIds → exactly those;
 // otherwise every fresh ('new') lead. Excludes leads already holding an in-flight
 // (pending|scheduled|sending) QueuedEmail for this campaign — the double-enqueue
@@ -60,20 +98,26 @@ const start = async (campaignId, { leadIds } = {}) => {
   if (campaign.status !== 'draft')
     throw badRequest('Only draft campaigns can be started')
 
-  const template = await Template.findById(campaign.templateId)
-  if (!template)
+  const steps = normalizeSteps(campaign)
+  if (!steps[0].templateId)
     throw badRequest('Campaign has no valid template — set templateId first')
 
-  // Deliverability gate: validate the template body+signature ONCE, before the
+  // Deliverability gate: validate EVERY step's template body+signature before the
   // enqueue loop. Doing it here (not per-lead) prevents partially enqueuing a
   // batch on a bad template — the links/images live in the template itself, and
   // the per-lead ai_intro is length/format-constrained by the AI prompt, so a
-  // template that passes here passes for every lead.
-  const composed =
-    template.body + (template.signature ? '\n\n' + template.signature : '')
-  const check = validateBody(composed)
-  if (!check.ok)
-    throw badRequest(`Template fails deliverability rules: ${check.errors[0]}`)
+  // template that passes here passes for every lead. A bad follow-up template
+  // blocks the whole start so we never enqueue step 0 for a doomed sequence.
+  for (let i = 0; i < steps.length; i++) {
+    const t = await Template.findById(steps[i].templateId)
+    if (!t) throw badRequest(`Step ${i + 1} template not found`)
+    const composed = t.body + (t.signature ? '\n\n' + t.signature : '')
+    const check = validateBody(composed)
+    if (!check.ok)
+      throw badRequest(
+        `Step ${i + 1} template fails deliverability rules: ${check.errors[0]}`,
+      )
+  }
 
   const targeted = await targetLeads(campaign, leadIds)
 
@@ -122,19 +166,9 @@ const start = async (campaignId, { leadIds } = {}) => {
       await lead.save()
     }
 
-    const vars = {
-      first_name: lead.firstName || '',
-      last_name: lead.lastName || '',
-      company: lead.company || '',
-      industry: lead.industry || '',
-      website: lead.website || '',
-      ai_intro: lead.aiIntro || '',
-    }
-    const subject = render(template.subject, vars)
-    let body = render(template.body, vars)
-    if (template.signature) body += '\n\n' + render(template.signature, vars)
-
-    await enqueue({ campaignId: campaign._id, leadId: lead._id, subject, body })
+    // Enqueue only step 0 now; the worker schedules each follow-up after the
+    // prior step actually sends (so delays run from real send times).
+    await enqueueStepForLead(campaign, lead, 0, null)
 
     lead.status = 'queued'
     lead.campaignId = campaign._id
@@ -275,6 +309,8 @@ const leadCountsByStatus = async () => {
 }
 
 module.exports = {
+  normalizeSteps,
+  enqueueStepForLead,
   targetLeads,
   start,
   pause,

@@ -9,6 +9,7 @@ const enqueue = async ({
   campaignId,
   leadId,
   mailboxId,
+  stepIndex = 0,
   subject,
   body,
   scheduledAt,
@@ -17,6 +18,7 @@ const enqueue = async ({
     campaignId,
     leadId,
     mailboxId,
+    stepIndex,
     subject,
     body,
     status: 'pending',
@@ -72,6 +74,14 @@ const markBounced = async (item, { errorMessage, smtpResponse }) => {
   return item.save()
 }
 
+// Cancel an item without sending — used when a follow-up is no longer wanted
+// (e.g. the lead already replied/bounced/unsubscribed before it was due).
+const markCancelled = async (item, { errorMessage }) => {
+  item.status = 'cancelled'
+  if (errorMessage !== undefined) item.errorMessage = errorMessage
+  return item.save()
+}
+
 // Append a structured log line. Never let logging break a send.
 const log = async (level, category, message, refs = {}, meta = {}) => {
   try {
@@ -113,6 +123,7 @@ module.exports = {
   reschedule,
   markFailed,
   markBounced,
+  markCancelled,
   log,
   classifySendError,
 }

@@ -42,15 +42,15 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-015] Follow-up sequences — multi-step campaigns with stop-on-reply
 - priority: P1
-- status: todo
+- status: done
 - area: both
 - description: Campaigns are single-touch today. Add sequence steps: Campaign gains `steps: [{ order, templateId, delayDays }]` (step 1 = the initial email; backward compat: campaigns with empty `steps` behave exactly as today using `templateId`). Enqueue-at-send-time design: when the worker marks a step-N item `sent`, it enqueues the step-N+1 item for the same lead with `scheduledAt = sentAt + delayDays` (renders the step's template with the lead's cached `ai_intro`; `QueuedEmail` gains `stepIndex`). **Stop-on-reply/bounce/unsubscribe:** before sending ANY item, the worker checks the lead's current status — `replied`/`bounced`/`unsubscribed` → item flips to `cancelled` (never sent) and no further steps are scheduled. Campaign auto-completion must count future-scheduled follow-ups as open work. Deliverability gate at start validates EVERY step's template, not just the first. Client: campaign form gets a sequence builder — step 1 template + "+ Add follow-up" rows (template dropdown + "wait N days"); campaign list shows the step count; queue view shows the step number per item.
 - acceptance:
-  - [ ] Creating a campaign with 2 follow-ups (e.g. +3 days, +7 days) and starting it enqueues ONLY step-1 items; step count visible in the campaigns list
-  - [ ] After a step-1 item sends, a step-2 item exists for that lead with `scheduledAt` ≈ sentAt + configured delay (test-shortened delays acceptable), and the worker does not send it early
-  - [ ] Marking the lead as Replied before the follow-up's time causes the worker to cancel (not send) the pending follow-up
-  - [ ] A campaign with no steps behaves exactly as before (single email, regression-safe); existing running campaigns are unaffected
-  - [ ] Deliverability validation at start covers every step's template (a 2-link template in step 2 blocks the start)
+  - [x] Creating a campaign with 2 follow-ups (e.g. +3 days, +7 days) and starting it enqueues ONLY step-1 items; step count visible in the campaigns list
+  - [x] After a step-1 item sends, a step-2 item exists for that lead with `scheduledAt` ≈ sentAt + configured delay (test-shortened delays acceptable), and the worker does not send it early
+  - [x] Marking the lead as Replied before the follow-up's time causes the worker to cancel (not send) the pending follow-up
+  - [x] A campaign with no steps behaves exactly as before (single email, regression-safe); existing running campaigns are unaffected
+  - [x] Deliverability validation at start covers every step's template (a 2-link template in step 2 blocks the start)
 
 ## [T-016] Outreach settings portal — move runtime tunables out of .env
 - priority: P2

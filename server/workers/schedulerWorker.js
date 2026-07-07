@@ -12,6 +12,7 @@ const {
   markSent,
   markFailed,
   markBounced,
+  markCancelled,
   reschedule,
   log,
   classifySendError,
@@ -102,6 +103,19 @@ const processOne = async (deps = {}) => {
       return { failed: true }
     }
 
+    // Stop-on-reply: a pending follow-up must not send once the lead is out of
+    // the funnel (replied/bounced/unsubscribed). Cancel it instead of sending.
+    if (lead && ['replied', 'bounced', 'unsubscribed'].includes(lead.status)) {
+      const refs = {
+        queueId: item._id,
+        mailboxId: mailbox._id,
+        campaignId: item.campaignId,
+      }
+      await markCancelled(item, { errorMessage: 'stopped — lead ' + lead.status })
+      await log('info', 'campaign', 'stopped — lead ' + lead.status, refs)
+      return { cancelled: true }
+    }
+
     const provider = providerFor(mailbox)
 
     try {
@@ -127,8 +141,31 @@ const processOne = async (deps = {}) => {
         await lead.save()
       } catch (_) {}
 
+      // Best-effort follow-up scheduling — MUST run before the completion check
+      // below, else a mid-sequence campaign would see 0 in-flight and wrongly
+      // complete. Schedules the next step at sentAt + delay; never throws out of
+      // the send path.
+      try {
+        const steps = campaignService.normalizeSteps(campaign || {})
+        const next = item.stepIndex + 1
+        if (
+          campaign &&
+          campaign.status === 'running' &&
+          steps[next] &&
+          lead &&
+          !['replied', 'bounced', 'unsubscribed'].includes(lead.status)
+        ) {
+          const sentAt = item.sentAt || new Date()
+          const when = new Date(
+            sentAt.getTime() + steps[next].delayDays * config.followupDelayUnitMs,
+          )
+          await campaignService.enqueueStepForLead(campaign, lead, next, when)
+        }
+      } catch (_) {}
+
       // Best-effort campaign completion — when nothing is left in flight, mark it
-      // completed. Must never fail the send.
+      // completed. Must never fail the send. Runs AFTER the follow-up enqueue so
+      // a scheduled next step keeps a mid-sequence campaign 'running'.
       try {
         if (item.campaignId && campaign && campaign.status === 'running') {
           const remaining = await QueuedEmail.countDocuments({

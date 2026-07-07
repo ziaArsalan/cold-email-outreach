@@ -27,6 +27,10 @@ module.exports = {
     backoffBaseMs: 60000,
   },
 
+  // Milliseconds per follow-up "day" — the multiplier for a step's delayDays.
+  // Real deploys leave this at 1 day; tests shrink it so follow-ups fire fast.
+  followupDelayUnitMs: Number(process.env.FOLLOWUP_DELAY_UNIT_MS) || 86400000,
+
   smtpTimeoutMs: Number(process.env.SMTP_TIMEOUT_MS) || 30000,
   workerTickGuardMs: Number(process.env.WORKER_TICK_GUARD_MS) || 5000,
   workerIdleMs: Number(process.env.WORKER_IDLE_MS) || 30000,
