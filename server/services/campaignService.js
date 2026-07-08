@@ -77,6 +77,8 @@ const targetLeads = async (campaign, leadIds) => {
   let leads
   if (Array.isArray(leadIds) && leadIds.length) {
     leads = await Lead.find({ _id: { $in: leadIds } })
+  } else if (campaign.listId) {
+    leads = await Lead.find({ listId: campaign.listId, status: 'new' })
   } else {
     leads = await Lead.find({ status: 'new' })
   }

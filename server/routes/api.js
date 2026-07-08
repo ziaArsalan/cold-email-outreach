@@ -937,6 +937,12 @@ const validateCampaign = (body, partial) => {
     (typeof body.dailyLimit !== 'number' || body.dailyLimit < 0)
   )
     return 'dailyLimit must be a number >= 0'
+  if (
+    body.listId !== undefined &&
+    body.listId !== null &&
+    typeof body.listId !== 'string'
+  )
+    return 'listId must be a string or null'
   if (body.warmupEnabled !== undefined && typeof body.warmupEnabled !== 'boolean')
     return 'warmupEnabled must be a boolean'
   if (body.schedule !== undefined) {
@@ -962,6 +968,7 @@ const campaignFields = (body) => {
     'aiPrompt',
     'mailboxIds',
     'dailyLimit',
+    'listId',
     'warmupEnabled',
     'schedule',
   ]
@@ -987,10 +994,18 @@ router.get('/campaigns', async (req, res) => {
       Campaign.find().sort({ createdAt: -1 }),
       campaignService.countsByCampaign(),
     ])
+    const listIds = docs.map((d) => d.listId).filter(Boolean)
+    const listDocs = listIds.length
+      ? await List.find({ _id: { $in: listIds } }).select('name').lean()
+      : []
+    const listNameById = Object.fromEntries(
+      listDocs.map((l) => [String(l._id), l.name]),
+    )
     const campaigns = docs.map((c) => ({
       ...c.toObject(),
       counts: counts[String(c._id)] || {},
       stepCount: (c.steps && c.steps.length) || 1,
+      listName: c.listId ? listNameById[String(c.listId)] || null : null,
     }))
     res.json({ success: true, campaigns })
   } catch (err) {
@@ -1008,6 +1023,17 @@ router.post('/campaigns', async (req, res) => {
     const invalid = validateCampaign(req.body || {}, false)
     if (invalid)
       return res.status(400).json({ success: false, error: invalid })
+
+    if (req.body.listId) {
+      if (
+        !mongoose.Types.ObjectId.isValid(req.body.listId) ||
+        !(await List.exists({ _id: req.body.listId }))
+      )
+        return res.status(400).json({
+          success: false,
+          error: 'listId does not refer to an existing list',
+        })
+    }
 
     const campaign = await Campaign.create({
       ...campaignFields(req.body || {}),
@@ -1048,6 +1074,17 @@ router.put('/campaigns/:id', async (req, res) => {
       return res
         .status(400)
         .json({ success: false, error: 'Only draft campaigns can be edited' })
+
+    if (req.body.listId) {
+      if (
+        !mongoose.Types.ObjectId.isValid(req.body.listId) ||
+        !(await List.exists({ _id: req.body.listId }))
+      )
+        return res.status(400).json({
+          success: false,
+          error: 'listId does not refer to an existing list',
+        })
+    }
 
     Object.assign(campaign, campaignFields(req.body || {}))
     await campaign.save()

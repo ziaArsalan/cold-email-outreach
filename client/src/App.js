@@ -61,6 +61,7 @@ const statusColor = (s) => {
 const BLANK_CAMPAIGN = {
   name: '',
   templateId: '',
+  listId: '',
   steps: [],
   aiPrompt: '',
   mailboxIds: [],
@@ -694,7 +695,12 @@ export default function App() {
   }
 
   const fetchCampaignsAll = async () => {
-    await Promise.all([fetchCampaigns(), fetchTemplates(), fetchMailboxes()])
+    await Promise.all([
+      fetchCampaigns(),
+      fetchTemplates(),
+      fetchMailboxes(),
+      fetchLists(),
+    ])
   }
 
   const createCampaign = async (e) => {
@@ -714,6 +720,7 @@ export default function App() {
           endTime: newCampaign.endTime,
         },
       }
+      if (newCampaign.listId) payload.listId = newCampaign.listId
       if (newCampaign.templateId) {
         payload.templateId = newCampaign.templateId
         // Build the full sequence: step 0 is the initial email, then any
@@ -1657,6 +1664,7 @@ export default function App() {
                           </div>
                           <div className='campaign-meta'>
                             <span>{c.stepCount || 1} step(s)</span>
+                            {c.listName && <span>List: {c.listName}</span>}
                             <span>pending {counts.pending || 0}</span>
                             <span>sent {counts.sent || 0}</span>
                             <span>cancelled {counts.cancelled || 0}</span>
@@ -1748,6 +1756,25 @@ export default function App() {
                       {templates.map((t) => (
                         <option key={t._id} value={t._id}>
                           {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className='control-group'>
+                    <label>List</label>
+                    <select
+                      value={newCampaign.listId}
+                      onChange={(e) =>
+                        setNewCampaign((c) => ({
+                          ...c,
+                          listId: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value=''>No list (all new leads)</option>
+                      {lists.map((l) => (
+                        <option key={l._id} value={l._id}>
+                          {l.name} ({l.leadCount} leads)
                         </option>
                       ))}
                     </select>

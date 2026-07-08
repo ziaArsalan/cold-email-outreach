@@ -44,14 +44,14 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-018] Campaigns target a lead list
 - priority: P1
-- status: todo
+- status: done
 - area: both
 - description: Depends on T-017. Give Campaign an optional `listId` (ObjectId ref List). The New Campaign form gets a **List** dropdown (from `GET /api/lists`, showing name + lead count). `campaignService.start()` targeting precedence: explicit `{ leadIds }` override (unchanged, QA-safe) → else the campaign's `listId` leads that are eligible (`status:'new'`, not already in-flight for this campaign) → else today's global `status:'new'` fallback when no list set (regression-safe). Deliverability + email-verification screening + AI-intro + follow-up enqueue all unchanged. The campaign list row / detail shows the target list name. Validate `listId` refers to an existing list on create/PUT.
 - acceptance:
-  - [ ] The New Campaign form has a List dropdown populated from lists (name + lead count); saving persists the campaign's listId
-  - [ ] Starting a list-targeted campaign enqueues that list's eligible leads only (not the global 'new' set) — verified in the queue/DB
-  - [ ] An explicit `leadIds` override still wins; a campaign with no list falls back to today's behavior (regression-safe)
-  - [ ] The campaign row/detail shows which list it targets
+  - [x] The New Campaign form has a List dropdown populated from lists (name + lead count); saving persists the campaign's listId
+  - [x] Starting a list-targeted campaign enqueues that list's eligible leads only (not the global 'new' set) — verified in the queue/DB
+  - [x] An explicit `leadIds` override still wins; a campaign with no list falls back to today's behavior (regression-safe)
+  - [x] The campaign row/detail shows which list it targets
 
 <!-- ═══ Outreach V2.1 (portal completeness) — do T-014→T-016 in order ═══ -->
 

@@ -18,6 +18,7 @@ const campaignSchema = new mongoose.Schema(
     aiPrompt: String,
     mailboxIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Mailbox' }],
     dailyLimit: Number,
+    listId: { type: mongoose.Schema.Types.ObjectId, ref: 'List', default: null },
     status: {
       type: String,
       enum: ['draft', 'running', 'paused', 'completed', 'stopped'],
