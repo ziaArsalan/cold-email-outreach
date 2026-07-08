@@ -23,7 +23,10 @@ const {
 } = require('../services/authService')
 const config = require('../jobs/config')
 const mongoose = require('mongoose')
-const { Lead, Template, Mailbox, Campaign, QueuedEmail } = require('../models')
+const { Lead, List, Template, Mailbox, Campaign, QueuedEmail } = require('../models')
+const { upsertLeadsIntoList } = require('../services/leadImportService')
+const sheetsService = require('../services/sheetsService')
+const { parse } = require('csv-parse/sync')
 const { render } = require('../services/templateService')
 const campaignService = require('../services/campaignService')
 const settingsService = require('../services/settingsService')
@@ -1275,6 +1278,247 @@ router.post('/leads/:id/bounced', async (req, res) => {
     await lead.save()
     res.json({ success: true, lead })
   } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// ── Lead Lists (Mongo-backed lead grouping) ──
+
+// GET /api/lists — all lists with a per-list lead count + the unassigned count.
+router.get('/lists', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const grouped = await Lead.aggregate([
+      { $group: { _id: '$listId', n: { $sum: 1 } } },
+    ])
+    const countMap = {}
+    let unassignedCount = 0
+    for (const g of grouped) {
+      if (g._id == null) unassignedCount = g.n
+      else countMap[String(g._id)] = g.n
+    }
+
+    const docs = await List.find().sort({ createdAt: -1 }).lean()
+    const lists = docs.map((l) => ({
+      ...l,
+      leadCount: countMap[String(l._id)] || 0,
+    }))
+    res.json({ success: true, lists, unassignedCount })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/lists — create a list.
+router.post('/lists', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { name, description } = req.body || {}
+    if (typeof name !== 'string' || !name.trim())
+      return res
+        .status(400)
+        .json({ success: false, error: 'name must be a non-empty string' })
+    const list = await List.create({ name, description, source: 'manual' })
+    res.status(201).json({ success: true, list })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// PUT /api/lists/:id — rename / re-describe a list.
+router.put('/lists/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { name, description } = req.body || {}
+    if (name !== undefined && (typeof name !== 'string' || !name.trim()))
+      return res
+        .status(400)
+        .json({ success: false, error: 'name must be a non-empty string' })
+    const updates = {}
+    if (name !== undefined) updates.name = name
+    if (description !== undefined) updates.description = description
+    const list = await List.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+      runValidators: true,
+    })
+    if (!list)
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.json({ success: true, list })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// DELETE /api/lists/:id — unassign its leads and remove it, unless a campaign
+// targets it. (campaign.listId arrives in T-018; matches nothing until then.)
+router.delete('/lists/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    if (await Campaign.exists({ listId: req.params.id }))
+      return res.status(400).json({
+        success: false,
+        error:
+          'List is targeted by a campaign — stop/delete that campaign first',
+      })
+    await Lead.updateMany(
+      { listId: req.params.id },
+      { $set: { listId: null } },
+    )
+    const list = await List.findByIdAndDelete(req.params.id)
+    if (!list)
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.json({ success: true })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/lists/:id/leads — paginated leads in a list ('unassigned' = no list).
+router.get('/lists/:id/leads', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25))
+    // Guard the 'unassigned' literal so it isn't cast to an ObjectId.
+    const filter =
+      req.params.id === 'unassigned'
+        ? { listId: null }
+        : { listId: req.params.id }
+
+    const [docs, total] = await Promise.all([
+      Lead.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select('firstName lastName email company website status emailCheckStatus listId')
+        .lean(),
+      Lead.countDocuments(filter),
+    ])
+
+    const pages = Math.max(1, Math.ceil(total / limit))
+    res.json({ success: true, items: docs, total, page, pages })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// Bump a list's source after an import: manual → the import's source; an
+// existing different non-manual source → 'mixed'.
+const bumpListSource = async (id, source) => {
+  const list = await List.findById(id).select('source').lean()
+  if (!list) return
+  let next = source
+  if (list.source && list.source !== 'manual' && list.source !== source)
+    next = 'mixed'
+  if (list.source !== next)
+    await List.findByIdAndUpdate(id, { $set: { source: next } })
+}
+
+// POST /api/lists/:id/import-csv — parse a CSV string, upsert its rows.
+router.post('/lists/:id/import-csv', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { csv } = req.body || {}
+    if (typeof csv !== 'string' || !csv.trim())
+      return res
+        .status(400)
+        .json({ success: false, error: 'csv must be a non-empty string' })
+
+    let rows
+    try {
+      rows = parse(csv, { columns: true, trim: true, skip_empty_lines: true })
+    } catch (err) {
+      return res
+        .status(400)
+        .json({ success: false, error: 'Could not parse CSV: ' + err.message })
+    }
+    if (!rows.length || !rows.some((r) => Object.keys(r).some((k) => /^e-?mail$/i.test(k.trim()))))
+      return res
+        .status(400)
+        .json({ success: false, error: 'CSV must contain an email column' })
+
+    const summary = await upsertLeadsIntoList(rows, req.params.id, 'csv')
+    await bumpListSource(req.params.id, 'csv')
+    res.json({ success: true, ...summary })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/lists/:id/import-sheet — pull a Google Sheet tab's rows, upsert them.
+router.post('/lists/:id/import-sheet', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const body = req.body || {}
+    const sheetId = body.sheetId || process.env.GOOGLE_SHEET_ID
+    const tab = body.tab || 'Sheet1'
+
+    let rows
+    try {
+      rows = await sheetsService.fetchRowsAsObjects(sheetId, tab)
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message })
+    }
+
+    const summary = await upsertLeadsIntoList(rows, req.params.id, 'sheets')
+    await bumpListSource(req.params.id, 'sheets')
+    res.json({ success: true, ...summary })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/lists/:id/assign — move existing leads into this list.
+router.post('/lists/:id/assign', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { leadIds } = req.body || {}
+    if (!Array.isArray(leadIds) || leadIds.length === 0)
+      return res
+        .status(400)
+        .json({ success: false, error: 'leadIds must be a non-empty array' })
+    const result = await Lead.updateMany(
+      { _id: { $in: leadIds } },
+      { $set: { listId: req.params.id } },
+    )
+    res.json({ success: true, moved: result.modifiedCount })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
     res.status(500).json({ success: false, error: err.message })
   }
 })

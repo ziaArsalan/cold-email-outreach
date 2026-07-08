@@ -39,6 +39,7 @@ const leadSchema = new mongoose.Schema(
     emailCheckReason: String,
     lastContactDate: Date,
     campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign' },
+    listId: { type: mongoose.Schema.Types.ObjectId, ref: 'List', default: null },
     replyStatus: String,
     bounceStatus: String,
     source: {
@@ -51,5 +52,6 @@ const leadSchema = new mongoose.Schema(
 )
 
 leadSchema.index({ email: 1 }, { unique: true })
+leadSchema.index({ listId: 1 })
 
 module.exports = mongoose.model('Lead', leadSchema)

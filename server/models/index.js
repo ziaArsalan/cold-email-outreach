@@ -1,4 +1,5 @@
 const Lead = require('./Lead')
+const List = require('./List')
 const Mailbox = require('./Mailbox')
 const Template = require('./Template')
 const Campaign = require('./Campaign')
@@ -8,6 +9,7 @@ const OutreachSetting = require('./OutreachSetting')
 
 module.exports = {
   Lead,
+  List,
   Mailbox,
   Template,
   Campaign,

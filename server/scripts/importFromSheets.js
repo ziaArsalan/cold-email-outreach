@@ -10,13 +10,8 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env') })
 const mongoose = require('mongoose')
 const { connectMongo } = require('../db')
 const { fetchAllLeads } = require('../services/sheetsService')
-const { Lead, Mailbox, Template } = require('../models')
-
-const STATUS_MAP = {
-  '': 'new',
-  Emailed: 'contacted',
-  Failed: 'failed',
-}
+const { upsertLeadsIntoList } = require('../services/leadImportService')
+const { Mailbox, Template } = require('../models')
 
 const DEFAULT_TEMPLATE = {
   name: 'Default',
@@ -36,36 +31,6 @@ https://devtronics.co`,
   active: true,
 }
 
-const mapRow = (row) => {
-  const email = (row.email || '').toLowerCase().trim()
-  if (!email) return null
-
-  const name = (row.name || '').trim()
-  const [firstName, ...rest] = name.split(/\s+/)
-  const lastName = rest.join(' ')
-
-  const status = STATUS_MAP[row.status] ?? 'new'
-
-  let aiSubject
-  let aiIntro
-  if (row.generatedEmail && typeof row.generatedEmail === 'object') {
-    aiSubject = row.generatedEmail.subject
-    aiIntro = row.generatedEmail.body
-  }
-
-  return {
-    firstName: firstName || undefined,
-    lastName: lastName || undefined,
-    company: row.business || undefined,
-    email,
-    website: row.website || undefined,
-    status,
-    aiIntro,
-    aiSubject,
-    source: 'sheets',
-  }
-}
-
 const run = async () => {
   try {
     await connectMongo()
@@ -75,28 +40,26 @@ const run = async () => {
     process.exit(1)
   }
 
-  const rows = await fetchAllLeads()
-  console.log(`[import] fetched ${rows.length} rows from Sheets`)
+  const sheetRows = await fetchAllLeads()
+  console.log(`[import] fetched ${sheetRows.length} rows from Sheets`)
 
-  const docs = rows.map(mapRow).filter(Boolean)
+  // Reshape to header-keyed rows the shared mapper understands
+  // (email→email, name→first/last split, business→company, website→website).
+  const rows = sheetRows.map((row) => ({
+    email: row.email,
+    name: row.name,
+    business: row.business,
+    website: row.website,
+  }))
 
-  if (docs.length) {
-    const ops = docs.map((doc) => ({
-      updateOne: {
-        filter: { email: doc.email },
-        update: { $set: doc },
-        upsert: true,
-      },
-    }))
-    const result = await Lead.bulkWrite(ops, { ordered: false })
-    const upserted = result.upsertedCount || 0
-    const matched = result.matchedCount || 0
-    console.log(
-      `[import] leads — upserted ${upserted}, matched (existing) ${matched}`,
-    )
-  } else {
-    console.log('[import] no leads with a valid email to import')
-  }
+  const { inserted, updated, skipped } = await upsertLeadsIntoList(
+    rows,
+    null,
+    'sheets',
+  )
+  console.log(
+    `[import] leads — inserted ${inserted}, updated ${updated}, skipped ${skipped}`,
+  )
 
   // Seed a default Mailbox from SMTP_* env vars (idempotent by email).
   const smtpUser = process.env.SMTP_USER

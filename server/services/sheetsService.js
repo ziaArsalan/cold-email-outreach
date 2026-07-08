@@ -58,6 +58,28 @@ const fetchAllLeads = async () => {
   return rows.slice(1).map((row, index) => parseRow(row, index));
 };
 
+// Generic reader: fetch a tab's rows as objects keyed by its header row.
+// Row 0 is treated as headers; rows 1..N become { header: cell } objects.
+const fetchRowsAsObjects = async (sheetId, tab) => {
+  const sheets = getSheetClient();
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: `${tab}!A:Z`,
+  });
+
+  const rows = response.data.values || [];
+  if (rows.length <= 1) return [];
+
+  const headers = rows[0].map((h) => String(h || '').trim());
+  return rows.slice(1).map((row) => {
+    const obj = {};
+    headers.forEach((header, i) => {
+      if (header) obj[header] = row[i] != null ? row[i] : '';
+    });
+    return obj;
+  });
+};
+
 // Update the Status column (E) to "Emailed" for a given row
 const updateLeadStatus = async (rowIndex, status = 'Emailed') => {
   const sheets = getSheetClient();
@@ -80,4 +102,4 @@ const saveGeneratedEmail = async (rowIndex, emailData) => {
   });
 };
 
-module.exports = { fetchPendingLeads, fetchAllLeads, updateLeadStatus, saveGeneratedEmail };
+module.exports = { fetchPendingLeads, fetchAllLeads, fetchRowsAsObjects, updateLeadStatus, saveGeneratedEmail };

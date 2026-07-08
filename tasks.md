@@ -31,16 +31,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 ## [T-017] Lead lists — listing module (List model, imports, list/leads UI)
 - priority: P1
-- status: todo
+- status: done
 - area: both
 - description: Handle leads **listwise**. Introduce a `List` model (name, description, source `csv|sheets|manual|mixed`, timestamps) and add `listId` (ObjectId ref List, nullable) to the Lead model — **one list per lead** (re-importing an email moves it to the new list). Convert the current flat, Google-Sheets-backed **Leads tab into a Lists module**: a list of lists (name, lead count, source, created) → clicking a list opens its **leads table sourced from MongoDB** (not Sheets) with the existing per-lead actions (`POST /api/leads/:id/preview`, `/replied`, `/bounced`). Also surface an **"Unassigned"** pseudo-view for Mongo leads with no `listId` (the 45 legacy import leads land here, reachable + assignable). **Three import paths into a list:** (1) **CSV upload** — server-side parse via the `csv-parse` npm package; require an `email` column; case-insensitively map common headers (email/e-mail, first name/firstname/first_name, last name, company/business, website/url, industry, country) to Lead fields; dedupe by email (upsert, set `listId`, `source:'csv'`); report inserted/updated/skipped counts. (2) **Import a Google Sheet** — reuse `sheetsService` to pull a tab's rows into a list (same mapping/dedupe, `source:'sheets'`). (3) **Assign existing** — checkbox-select leads in a leads view and bulk-set their `listId`. Endpoints: `GET/POST /api/lists`, `PUT/DELETE /api/lists/:id`, `GET /api/lists/:id/leads` (paginated), `POST /api/lists/:id/import-csv`, `POST /api/lists/:id/import-sheet`, `POST /api/lists/:id/assign` (body `{ leadIds }`). Delete-list: block with 400 if a non-terminal campaign targets it (T-018 adds `campaign.listId`); otherwise unassign its leads (`listId` → null) and delete. Keep the legacy Sheets `GET /api/leads` + old `/api/preview` untouched (used by nothing critical after this, but don't break them). QA via browser + API; real emails not involved (no sending in this task).
 - acceptance:
-  - [ ] A "Lists" module replaces the flat Leads tab: shows all lists with name + lead count + source; creating a list persists (survives reload)
-  - [ ] Clicking a list opens its leads table sourced from MongoDB with working per-lead Preview / Mark-replied / Mark-bounced actions; an "Unassigned" view shows Mongo leads with no listId
-  - [ ] CSV upload into a list parses rows, maps headers to Lead fields, dedupes by email, and the new leads appear in the list (source `csv`) with an inserted/updated/skipped summary
-  - [ ] Importing a Google Sheet tab into a list pulls its rows in with the same dedupe (source `sheets`)
-  - [ ] Selecting existing (e.g. Unassigned) leads and assigning them to a list sets their listId; each lead then appears in exactly one list
-  - [ ] Deleting a list with no campaign referencing it unassigns its leads and removes the list; deleting one targeted by a running campaign is blocked with a clear error
+  - [x] A "Lists" module replaces the flat Leads tab: shows all lists with name + lead count + source; creating a list persists (survives reload)
+  - [x] Clicking a list opens its leads table sourced from MongoDB with working per-lead Preview / Mark-replied / Mark-bounced actions; an "Unassigned" view shows Mongo leads with no listId
+  - [x] CSV upload into a list parses rows, maps headers to Lead fields, dedupes by email, and the new leads appear in the list (source `csv`) with an inserted/updated/skipped summary
+  - [x] Importing a Google Sheet tab into a list pulls its rows in with the same dedupe (source `sheets`)
+  - [x] Selecting existing (e.g. Unassigned) leads and assigning them to a list sets their listId; each lead then appears in exactly one list
+  - [x] Deleting a list with no campaign referencing it unassigns its leads and removes the list; deleting one targeted by a running campaign is blocked with a clear error
 
 ## [T-018] Campaigns target a lead list
 - priority: P1

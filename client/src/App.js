@@ -173,6 +173,18 @@ function LoginScreen({ onSuccess }) {
 
 export default function App() {
   const [leads, setLeads] = useState([])
+  // Lead lists (T-017)
+  const [lists, setLists] = useState([])
+  const [unassignedCount, setUnassignedCount] = useState(0)
+  const [openList, setOpenList] = useState(null)
+  const [listLeads, setListLeads] = useState({ items: [], page: 1, pages: 1 })
+  const [selectedLeadIds, setSelectedLeadIds] = useState(new Set())
+  const [newListForm, setNewListForm] = useState({ name: '', description: '' })
+  const [assignTarget, setAssignTarget] = useState('')
+  const [importBusy, setImportBusy] = useState(false)
+  const [importSummary, setImportSummary] = useState(null)
+  const [sheetImport, setSheetImport] = useState({ sheetId: '', tab: '' })
+  const [leadPreview, setLeadPreview] = useState(null)
   const [campaigns, setCampaigns] = useState([])
   const [templates, setTemplates] = useState([])
   const [mailboxes, setMailboxes] = useState([])
@@ -244,6 +256,175 @@ export default function App() {
   useEffect(() => {
     fetchLeads()
   }, [])
+
+  // ── Lead lists (T-017) ──
+  const fetchLists = async () => {
+    try {
+      const { data } = await axios.get(`${API}/lists`)
+      setLists(data.lists || [])
+      setUnassignedCount(data.unassignedCount || 0)
+    } catch (e) {}
+  }
+
+  const fetchListLeads = async (id, page = 1) => {
+    try {
+      const { data } = await axios.get(
+        `${API}/lists/${id}/leads?page=${page}&limit=25`,
+      )
+      setListLeads({
+        items: data.items || [],
+        page: data.page || 1,
+        pages: data.pages || 1,
+      })
+      setSelectedLeadIds(new Set())
+    } catch (e) {}
+  }
+
+  const openListView = (list) => {
+    setOpenList(list)
+    setImportSummary(null)
+    setSheetImport({ sheetId: '', tab: '' })
+    fetchListLeads(list._id)
+  }
+
+  const closeListView = () => {
+    setOpenList(null)
+    setImportSummary(null)
+    setSelectedLeadIds(new Set())
+  }
+
+  const createList = async (e) => {
+    if (e) e.preventDefault()
+    if (!newListForm.name.trim()) return
+    try {
+      await axios.post(`${API}/lists`, {
+        name: newListForm.name.trim(),
+        description: newListForm.description,
+      })
+      setNewListForm({ name: '', description: '' })
+      await fetchLists()
+    } catch (err) {
+      alert(
+        'Failed to create list: ' + (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  const deleteList = async (list) => {
+    if (!window.confirm(`Delete list "${list.name}"? Its leads become unassigned.`))
+      return
+    try {
+      await axios.delete(`${API}/lists/${list._id}`)
+      await fetchLists()
+    } catch (err) {
+      alert(err.response?.data?.error || err.message)
+    }
+  }
+
+  const toggleLeadSelected = (id) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const assignSelected = async () => {
+    if (!assignTarget || selectedLeadIds.size === 0) return
+    try {
+      await axios.post(`${API}/lists/${assignTarget}/assign`, {
+        leadIds: [...selectedLeadIds],
+      })
+      setAssignTarget('')
+      if (openList) await fetchListLeads(openList._id, listLeads.page)
+      await fetchLists()
+    } catch (err) {
+      alert(
+        'Failed to assign leads: ' + (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  const importCsv = (file) => {
+    if (!file || !openList) return
+    setImportBusy(true)
+    setImportSummary(null)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const { data } = await axios.post(
+          `${API}/lists/${openList._id}/import-csv`,
+          { csv: reader.result },
+        )
+        setImportSummary({
+          inserted: data.inserted,
+          updated: data.updated,
+          skipped: data.skipped,
+        })
+        await fetchListLeads(openList._id)
+        await fetchLists()
+      } catch (err) {
+        alert(
+          'CSV import failed: ' + (err.response?.data?.error || err.message),
+        )
+      } finally {
+        setImportBusy(false)
+      }
+    }
+    reader.onerror = () => {
+      alert('Could not read file')
+      setImportBusy(false)
+    }
+    reader.readAsText(file)
+  }
+
+  const importSheet = async () => {
+    if (!openList) return
+    setImportBusy(true)
+    setImportSummary(null)
+    try {
+      const { data } = await axios.post(
+        `${API}/lists/${openList._id}/import-sheet`,
+        {
+          sheetId: sheetImport.sheetId.trim() || undefined,
+          tab: sheetImport.tab.trim() || undefined,
+        },
+      )
+      setImportSummary({
+        inserted: data.inserted,
+        updated: data.updated,
+        skipped: data.skipped,
+      })
+      await fetchListLeads(openList._id)
+      await fetchLists()
+    } catch (err) {
+      alert(
+        'Sheet import failed: ' + (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  const openLeadPreview = async (leadId) => {
+    setLeadPreview({ loading: true })
+    try {
+      const { data } = await axios.post(`${API}/leads/${leadId}/preview`)
+      setLeadPreview({ subject: data.subject, body: data.body, loading: false })
+    } catch (err) {
+      setLeadPreview({
+        subject: 'Error',
+        body: err.response?.data?.error || err.message,
+        loading: false,
+      })
+    }
+  }
+
+  const markListLead = async (leadId, action) => {
+    await markLead(leadId, action)
+    if (openList) await fetchListLeads(openList._id, listLeads.page)
+  }
 
   // ── Dashboard analytics + live queue (T-012) ──
   const fetchAnalytics = async () => {
@@ -822,10 +1003,11 @@ export default function App() {
             className={tab === 'leads' ? 'nav-item active' : 'nav-item'}
             onClick={() => {
               setTab('leads')
-              fetchLeads()
+              closeListView()
+              fetchLists()
             }}
           >
-            <span className='nav-icon'>◉</span> Leads
+            <span className='nav-icon'>◉</span> Lists
           </button>
           <button
             className={tab === 'campaigns' ? 'nav-item active' : 'nav-item'}
@@ -1979,26 +2161,67 @@ export default function App() {
           </div>
         )}
 
-        {/* ── LEADS TAB ── */}
-        {tab === 'leads' && (
+        {/* ── LISTS TAB (T-017) ── */}
+        {tab === 'leads' && !openList && (
           <div className='tab-content'>
             <div className='page-header'>
-              <h1>Leads</h1>
-              <p>{leads.length} contacts from Google Sheets</p>
+              <h1>Lists</h1>
+              <p>Group leads into lists to target with campaigns</p>
             </div>
+
+            {/* New list */}
+            <div className='card'>
+              <h2>New List</h2>
+              <form onSubmit={createList}>
+                <div className='settings-fields-grid'>
+                  <div className='control-group'>
+                    <label>Name</label>
+                    <input
+                      type='text'
+                      value={newListForm.name}
+                      onChange={(e) =>
+                        setNewListForm((f) => ({ ...f, name: e.target.value }))
+                      }
+                      placeholder='Q3 SaaS founders'
+                      required
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>Description (optional)</label>
+                    <input
+                      type='text'
+                      value={newListForm.description}
+                      onChange={(e) =>
+                        setNewListForm((f) => ({
+                          ...f,
+                          description: e.target.value,
+                        }))
+                      }
+                      placeholder='Imported from Apollo export'
+                    />
+                  </div>
+                </div>
+                <div style={{ marginTop: '1.25rem' }}>
+                  <button
+                    className='btn-start'
+                    type='submit'
+                    disabled={!newListForm.name.trim()}
+                  >
+                    + Create List
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Lists table */}
             <div className='card table-card'>
-              <div className='bulk-actions'>
-                <button
-                  className='btn-start'
-                  onClick={bulkGenerate}
-                  disabled={
-                    bulkGenerating ||
-                    leads.filter((l) => !l.generatedEmail).length === 0
-                  }
-                >
-                  {bulkGenerating
-                    ? `⟳ Generating... (${bulkProgress.current}/${bulkProgress.total})`
-                    : '✦ Bulk Generate Emails'}
+              <div
+                className='bulk-actions'
+                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+              >
+                <h2 style={{ margin: 0 }}>Your Lists</h2>
+                <button className='btn-ghost' onClick={fetchLists}>
+                  ↻ Refresh
                 </button>
               </div>
               <div className='table-wrapper'>
@@ -2006,63 +2229,291 @@ export default function App() {
                   <thead>
                     <tr>
                       <th>Name</th>
-                      <th>Email</th>
-                      <th>Business</th>
-                      <th>Website</th>
-                      <th>Status</th>
-                      <th>Preview</th>
+                      <th>Source</th>
+                      <th>Leads</th>
+                      <th>Created</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {leads.map((lead, i) => (
-                      <tr key={i}>
-                        <td>{lead.name}</td>
-                        <td className='td-email'>{lead.email}</td>
-                        <td>{lead.business}</td>
+                    <tr>
+                      <td>Unassigned</td>
+                      <td>—</td>
+                      <td>{unassignedCount}</td>
+                      <td>—</td>
+                      <td>
+                        <button
+                          className='btn-ghost'
+                          onClick={() =>
+                            openListView({
+                              _id: 'unassigned',
+                              name: 'Unassigned',
+                            })
+                          }
+                        >
+                          Open
+                        </button>
+                      </td>
+                    </tr>
+                    {lists.map((l) => (
+                      <tr key={l._id}>
+                        <td>{l.name}</td>
                         <td>
-                          {lead.website && (
-                            <a
-                              href={lead.website}
-                              target='_blank'
-                              rel='noreferrer'
-                              className='link'
-                            >
-                              {lead.website
-                                .replace(/https?:\/\//, '')
-                                .slice(0, 25)}
-                            </a>
-                          )}
-                        </td>
-                        <td>
-                          <span
-                            className={`status-badge ${statusColor(lead.status)}`}
-                          >
-                            {lead.status || 'Pending'}
+                          <span className='status-badge'>
+                            {l.source || 'manual'}
                           </span>
                         </td>
+                        <td>{l.leadCount}</td>
                         <td>
-                          {!lead.generatedEmail && (
+                          {l.createdAt
+                            ? new Date(l.createdAt).toLocaleDateString()
+                            : '—'}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '0.4rem' }}>
                             <button
-                              className='btn-preview'
-                              onClick={() => openPreview(lead)}
+                              className='btn-ghost'
+                              onClick={() => openListView(l)}
                             >
-                              {lead.generatedEmail ? '👁 View' : '✦ Generate'}
+                              Open
                             </button>
-                          )}
-                          {console.log(lead)}
-                          {lead.status && lead.generatedEmail && (
                             <button
-                              className='btn-preview'
-                              onClick={() => openPreview(lead)}
+                              className='btn-stop'
+                              onClick={() => deleteList(l)}
                             >
-                              👁 View
+                              Delete
                             </button>
-                          )}
+                          </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── LIST DETAIL (T-017) ── */}
+        {tab === 'leads' && openList && (
+          <div className='tab-content'>
+            <div className='page-header'>
+              <button className='btn-ghost' onClick={closeListView}>
+                ← Back
+              </button>
+              <h1>{openList.name}</h1>
+              <p>{listLeads.items.length} shown on this page</p>
+            </div>
+
+            {/* Import controls — real lists only */}
+            {openList._id !== 'unassigned' && (
+              <div className='card'>
+                <h2>Import Leads</h2>
+                <div className='settings-fields-grid'>
+                  <div className='control-group'>
+                    <label>Upload CSV</label>
+                    <input
+                      type='file'
+                      accept='.csv,text/csv'
+                      disabled={importBusy}
+                      onChange={(e) => {
+                        importCsv(e.target.files[0])
+                        e.target.value = ''
+                      }}
+                    />
+                    <span className='field-note'>
+                      Needs an email column; other columns (first name, last
+                      name, company, website…) are mapped automatically.
+                    </span>
+                  </div>
+                  <div className='control-group'>
+                    <label>Google Sheet ID (optional)</label>
+                    <input
+                      type='text'
+                      value={sheetImport.sheetId}
+                      onChange={(e) =>
+                        setSheetImport((s) => ({
+                          ...s,
+                          sheetId: e.target.value,
+                        }))
+                      }
+                      placeholder='defaults to configured sheet'
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>Tab name (optional)</label>
+                    <input
+                      type='text'
+                      value={sheetImport.tab}
+                      onChange={(e) =>
+                        setSheetImport((s) => ({ ...s, tab: e.target.value }))
+                      }
+                      placeholder='Sheet1'
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>&nbsp;</label>
+                    <button
+                      className='btn-start'
+                      type='button'
+                      disabled={importBusy}
+                      onClick={importSheet}
+                    >
+                      {importBusy ? 'Importing…' : 'Import Sheet'}
+                    </button>
+                  </div>
+                </div>
+                {importSummary && (
+                  <p style={{ marginTop: '0.75rem', color: 'var(--muted)' }}>
+                    Inserted {importSummary.inserted} · Updated{' '}
+                    {importSummary.updated} · Skipped {importSummary.skipped}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Assign controls */}
+            <div className='card'>
+              <div className='bulk-actions' style={{ alignItems: 'center' }}>
+                <span className='field-note'>
+                  {selectedLeadIds.size} selected
+                </span>
+                <span className='field-note'>Assign selected to</span>
+                <select
+                  value={assignTarget}
+                  onChange={(e) => setAssignTarget(e.target.value)}
+                >
+                  <option value=''>Select a list…</option>
+                  {lists
+                    .filter((l) => l._id !== openList._id)
+                    .map((l) => (
+                      <option key={l._id} value={l._id}>
+                        {l.name}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  className='btn-start'
+                  onClick={assignSelected}
+                  disabled={!assignTarget || selectedLeadIds.size === 0}
+                >
+                  Assign
+                </button>
+              </div>
+            </div>
+
+            {/* Leads table */}
+            <div className='card table-card'>
+              {listLeads.items.length === 0 ? (
+                <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                  No leads in this list.
+                </p>
+              ) : (
+                <div className='table-wrapper'>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th></th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Company</th>
+                        <th>Website</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {listLeads.items.map((lead) => (
+                        <tr key={lead._id}>
+                          <td>
+                            <input
+                              type='checkbox'
+                              checked={selectedLeadIds.has(lead._id)}
+                              onChange={() => toggleLeadSelected(lead._id)}
+                            />
+                          </td>
+                          <td>
+                            {[lead.firstName, lead.lastName]
+                              .filter(Boolean)
+                              .join(' ') || '—'}
+                          </td>
+                          <td className='td-email'>{lead.email}</td>
+                          <td>{lead.company || '—'}</td>
+                          <td>
+                            {lead.website ? (
+                              <a
+                                href={lead.website}
+                                target='_blank'
+                                rel='noreferrer'
+                                className='link'
+                              >
+                                {lead.website
+                                  .replace(/https?:\/\//, '')
+                                  .slice(0, 25)}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td>
+                            <span className={`status-badge badge-${lead.status}`}>
+                              {lead.status}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button
+                                className='btn-preview'
+                                onClick={() => openLeadPreview(lead._id)}
+                              >
+                                Preview
+                              </button>
+                              <button
+                                className='btn-ghost'
+                                onClick={() =>
+                                  markListLead(lead._id, 'replied')
+                                }
+                              >
+                                Mark replied
+                              </button>
+                              <button
+                                className='btn-ghost'
+                                onClick={() =>
+                                  markListLead(lead._id, 'bounced')
+                                }
+                              >
+                                Mark bounced
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <div className='queue-pagination'>
+                <button
+                  className='btn-ghost'
+                  disabled={listLeads.page <= 1}
+                  onClick={() =>
+                    fetchListLeads(openList._id, listLeads.page - 1)
+                  }
+                >
+                  ← Prev
+                </button>
+                <span className='queue-page-label'>
+                  Page {listLeads.page} of {listLeads.pages}
+                </span>
+                <button
+                  className='btn-ghost'
+                  disabled={listLeads.page >= listLeads.pages}
+                  onClick={() =>
+                    fetchListLeads(openList._id, listLeads.page + 1)
+                  }
+                >
+                  Next →
+                </button>
               </div>
             </div>
           </div>
@@ -2800,6 +3251,33 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* ── Lead preview modal (T-017) ── */}
+      {leadPreview && (
+        <div className='modal-overlay' onClick={() => setLeadPreview(null)}>
+          <div className='modal-card' onClick={(e) => e.stopPropagation()}>
+            <button
+              className='modal-close btn-ghost'
+              onClick={() => setLeadPreview(null)}
+            >
+              ✕ Close
+            </button>
+            {leadPreview.loading ? (
+              <div className='loading-card'>
+                <div className='spinner' />
+                <p>Generating preview…</p>
+              </div>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 0.75rem' }}>
+                  <strong>Subject:</strong> {leadPreview.subject}
+                </p>
+                <pre>{leadPreview.body}</pre>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Cover letter modal ── */}
       {coverModal && (
