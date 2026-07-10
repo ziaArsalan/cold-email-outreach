@@ -57,13 +57,33 @@ const statusColor = (s) => {
   return 'status-pending'
 }
 
+// Default value pre-filled into a new campaign's "AI Prompt" field. These are
+// extra instructions appended to the server-side intro prompt (aiService).
+const DEFAULT_AI_PROMPT = `You are an expert B2B sales copywriter.
+
+Your task is to write only a personalised opening paragraph for a cold email.
+
+Rules:
+
+Write 1–2 short sentences (maximum 50 words).
+Mention something specific about the company, website, industry, or recent activity.
+Sound natural and conversational.
+Do not use hype or marketing buzzwords.
+Do not mention Devtronics or LoyalIdeas.
+Do not pitch or sell anything.
+Do not greet or sign off.
+Do not use double dashes.
+Return only the personalised intro with no explanations or formatting.
+
+The goal is to make the recipient feel the email was written specifically for them.`
+
 // Default state for the "New Campaign" form.
 const BLANK_CAMPAIGN = {
   name: '',
   templateId: '',
   listId: '',
   steps: [],
-  aiPrompt: '',
+  aiPrompt: DEFAULT_AI_PROMPT,
   mailboxIds: [],
   dailyLimit: 20,
   warmupEnabled: true,
@@ -1992,7 +2012,7 @@ export default function App() {
                     <label>AI Prompt (optional)</label>
                     <textarea
                       className='settings-textarea'
-                      rows={3}
+                      rows={12}
                       value={newCampaign.aiPrompt}
                       onChange={(e) =>
                         setNewCampaign((c) => ({
