@@ -1123,8 +1123,9 @@ router.post('/campaigns/:id/start', async (req, res) => {
   }
 })
 
-// POST /api/campaigns/:id/pause | /resume | /stop — lifecycle transitions
-for (const action of ['pause', 'resume', 'stop']) {
+// POST /api/campaigns/:id/pause | /resume | /stop | /reopen — lifecycle transitions
+// ('reopen' sends a stopped/completed campaign back to draft so it can be restarted)
+for (const action of ['pause', 'resume', 'stop', 'reopen']) {
   router.post(`/campaigns/:id/${action}`, async (req, res) => {
     if (!dbReady())
       return res
@@ -1142,6 +1143,24 @@ for (const action of ['pause', 'resume', 'stop']) {
     }
   })
 }
+
+// DELETE /api/campaigns/:id — remove a non-running campaign + its queue items
+router.delete('/campaigns/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    await campaignService.remove(req.params.id)
+    res.json({ success: true })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res
+        .status(404)
+        .json({ success: false, error: 'Campaign not found' })
+    campaignActionError(res, err)
+  }
+})
 
 // ── Dashboard analytics + live queue (T-012) ──
 

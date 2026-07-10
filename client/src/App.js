@@ -191,6 +191,8 @@ export default function App() {
   const [mailboxes, setMailboxes] = useState([])
   const [newCampaign, setNewCampaign] = useState(BLANK_CAMPAIGN)
   const [campaignBusy, setCampaignBusy] = useState(false)
+  // null = create mode; an id = editing that (draft) campaign in the same form.
+  const [editingCampaignId, setEditingCampaignId] = useState(null)
   // Which campaign has an in-flight start/pause/resume/stop (disables its buttons).
   const [campaignActionId, setCampaignActionId] = useState(null)
   // Synchronous lock so a fast double-click fires the action only once, before
@@ -740,13 +742,75 @@ export default function App() {
           })),
         ]
       }
-      await axios.post(`${API}/campaigns`, payload)
+      if (editingCampaignId) {
+        await axios.put(`${API}/campaigns/${editingCampaignId}`, payload)
+      } else {
+        await axios.post(`${API}/campaigns`, payload)
+      }
       setNewCampaign(BLANK_CAMPAIGN)
+      setEditingCampaignId(null)
       await fetchCampaigns()
     } catch (err) {
-      alert('Failed to create campaign: ' + (err.response?.data?.error || err.message))
+      alert(
+        `Failed to ${editingCampaignId ? 'save' : 'create'} campaign: ` +
+          (err.response?.data?.error || err.message),
+      )
     } finally {
       setCampaignBusy(false)
+    }
+  }
+
+  // Load a draft campaign into the New Campaign form for editing (PUT is draft-only).
+  const openEditCampaign = (c) => {
+    const steps = Array.isArray(c.steps) ? c.steps : []
+    setEditingCampaignId(c._id)
+    setNewCampaign({
+      name: c.name || '',
+      templateId: c.templateId
+        ? String(c.templateId)
+        : steps[0]
+          ? String(steps[0].templateId)
+          : '',
+      listId: c.listId ? String(c.listId) : '',
+      steps: steps.slice(1).map((s) => ({
+        templateId: String(s.templateId),
+        delayDays: s.delayDays,
+      })),
+      aiPrompt: c.aiPrompt || '',
+      mailboxIds: (c.mailboxIds || []).map(String),
+      dailyLimit: c.dailyLimit ?? 20,
+      warmupEnabled: c.warmupEnabled !== false,
+      days: (c.schedule && c.schedule.days) || ['mon', 'tue', 'wed', 'thu', 'fri'],
+      startTime: (c.schedule && c.schedule.startTime) || '09:00',
+      endTime: (c.schedule && c.schedule.endTime) || '17:00',
+    })
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
+  }
+
+  const cancelEditCampaign = () => {
+    setEditingCampaignId(null)
+    setNewCampaign(BLANK_CAMPAIGN)
+  }
+
+  const deleteCampaign = async (c) => {
+    if (
+      !window.confirm(
+        `Delete campaign "${c.name}"? This removes it and its queued emails. This cannot be undone.`,
+      )
+    )
+      return
+    if (campaignActionLock.current.has(c._id)) return
+    campaignActionLock.current.add(c._id)
+    setCampaignActionId(c._id)
+    try {
+      await axios.delete(`${API}/campaigns/${c._id}`)
+      if (editingCampaignId === c._id) cancelEditCampaign()
+      await fetchCampaigns()
+    } catch (err) {
+      alert('Failed to delete campaign: ' + (err.response?.data?.error || err.message))
+    } finally {
+      campaignActionLock.current.delete(c._id)
+      setCampaignActionId(null)
     }
   }
 
@@ -1695,13 +1759,29 @@ export default function App() {
                         </div>
                         <div className='campaign-actions'>
                           {c.status === 'draft' && (
-                            <button
-                              className='btn-start'
-                              disabled={campaignActionId === c._id}
-                              onClick={() => campaignAction(c._id, 'start')}
-                            >
-                              {campaignActionId === c._id ? 'Starting…' : '▶ Start'}
-                            </button>
+                            <>
+                              <button
+                                className='btn-start'
+                                disabled={campaignActionId === c._id}
+                                onClick={() => campaignAction(c._id, 'start')}
+                              >
+                                {campaignActionId === c._id ? 'Starting…' : '▶ Start'}
+                              </button>
+                              <button
+                                className='btn-ghost'
+                                disabled={campaignActionId === c._id}
+                                onClick={() => openEditCampaign(c)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className='btn-stop'
+                                disabled={campaignActionId === c._id}
+                                onClick={() => deleteCampaign(c)}
+                              >
+                                Delete
+                              </button>
+                            </>
                           )}
                           {c.status === 'running' && (
                             <>
@@ -1739,6 +1819,27 @@ export default function App() {
                               </button>
                             </>
                           )}
+                          {(c.status === 'stopped' ||
+                            c.status === 'completed') && (
+                            <>
+                              <button
+                                className='btn-start'
+                                disabled={campaignActionId === c._id}
+                                onClick={() => campaignAction(c._id, 'reopen')}
+                              >
+                                {campaignActionId === c._id
+                                  ? 'Restarting…'
+                                  : '↻ Restart'}
+                              </button>
+                              <button
+                                className='btn-stop'
+                                disabled={campaignActionId === c._id}
+                                onClick={() => deleteCampaign(c)}
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     )
@@ -1747,9 +1848,9 @@ export default function App() {
               )}
             </div>
 
-            {/* New campaign */}
+            {/* New / edit campaign */}
             <div className='card'>
-              <h2>New Campaign</h2>
+              <h2>{editingCampaignId ? 'Edit Campaign' : 'New Campaign'}</h2>
               <form onSubmit={createCampaign}>
                 <div className='settings-fields-grid'>
                   <div className='control-group'>
@@ -1969,14 +2070,30 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <div style={{ marginTop: '1.25rem' }}>
+                <div
+                  style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem' }}
+                >
                   <button
                     className='btn-start'
                     type='submit'
                     disabled={campaignBusy || !newCampaign.name.trim()}
                   >
-                    {campaignBusy ? 'Creating…' : '+ Create Campaign'}
+                    {campaignBusy
+                      ? 'Saving…'
+                      : editingCampaignId
+                        ? 'Save Changes'
+                        : '+ Create Campaign'}
                   </button>
+                  {editingCampaignId && (
+                    <button
+                      className='btn-ghost'
+                      type='button'
+                      onClick={cancelEditCampaign}
+                      disabled={campaignBusy}
+                    >
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </form>
             </div>

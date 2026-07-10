@@ -249,6 +249,31 @@ const stop = async (id) => {
   return campaign
 }
 
+// Send a terminal campaign back to 'draft' so it can be edited and re-started.
+// Only from stopped/completed. Re-Start then re-targets eligible ('new') leads —
+// already-contacted leads are naturally excluded, so a restart never re-emails.
+const reopen = async (id) => {
+  const campaign = await Campaign.findById(id)
+  if (!campaign) throw badRequest('Campaign not found')
+  if (!['stopped', 'completed'].includes(campaign.status))
+    throw badRequest(`Cannot restart a ${campaign.status} campaign`)
+  campaign.status = 'draft'
+  await campaign.save()
+  return campaign
+}
+
+// Delete a campaign that is not actively running (pause/stop it first), and
+// clean up its queue items + send logs so nothing dangles.
+const remove = async (id) => {
+  const campaign = await Campaign.findById(id)
+  if (!campaign) throw badRequest('Campaign not found')
+  if (campaign.status === 'running')
+    throw badRequest('Pause or stop the campaign before deleting it')
+  await QueuedEmail.deleteMany({ campaignId: campaign._id })
+  await Campaign.findByIdAndDelete(id)
+  return { deleted: true }
+}
+
 // Whether `now` falls inside the campaign's send window. No schedule → always
 // open. days: three-letter lowercase (['mon'..'sun']); empty days = every day.
 // Time window is [startTime, endTime); supports overnight (end < start).
@@ -350,6 +375,8 @@ module.exports = {
   pause,
   resume,
   stop,
+  reopen,
+  remove,
   isWithinWindow,
   sentTodayCount,
   countsByCampaign,
