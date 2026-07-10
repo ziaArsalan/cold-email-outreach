@@ -123,6 +123,38 @@ const start = async (campaignId, { leadIds } = {}) => {
       )
   }
 
+  // Atomically claim the campaign draft→running BEFORE enqueuing, so a
+  // double-click (or any concurrent double-submit) can't enqueue the batch
+  // twice. Only one request wins the findOneAndUpdate; the loser sees the
+  // campaign is no longer a draft. Deliverability is validated above (pre-claim)
+  // so a bad template still leaves the campaign in draft.
+  const claimed = await Campaign.findOneAndUpdate(
+    { _id: campaignId, status: 'draft' },
+    { $set: { status: 'running' } },
+    { new: true },
+  )
+  if (!claimed)
+    throw badRequest('Campaign is already being started (or is no longer a draft)')
+
+  // From here the campaign is 'running' with nothing enqueued yet (the worker
+  // has no items to send until this loop finishes). If enqueuing throws, roll
+  // the status back to draft so the user can fix and retry — leads already
+  // enqueued in the partial run stay 'queued' and are excluded on retry (the
+  // status:'new' filter + the in-flight dedupe), so a retry never double-sends.
+  try {
+    return await enqueueBatch(campaign, leadIds)
+  } catch (err) {
+    await Campaign.updateOne(
+      { _id: campaignId, status: 'running' },
+      { $set: { status: 'draft' } },
+    )
+    throw err
+  }
+}
+
+// The targeting → screening → AI-intro → enqueue batch, split out of start() so
+// start() can wrap it in the claim/rollback guard above. Returns { enqueued, skipped }.
+const enqueueBatch = async (campaign, leadIds) => {
   const targeted = await targetLeads(campaign, leadIds)
 
   // Free pre-send screening — format/MX/disposable/role-based. Runs before AI
@@ -180,8 +212,6 @@ const start = async (campaignId, { leadIds } = {}) => {
     enqueued += 1
   }
 
-  campaign.status = 'running'
-  await campaign.save()
   return { enqueued, skipped }
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import './App.css'
 
@@ -191,6 +191,11 @@ export default function App() {
   const [mailboxes, setMailboxes] = useState([])
   const [newCampaign, setNewCampaign] = useState(BLANK_CAMPAIGN)
   const [campaignBusy, setCampaignBusy] = useState(false)
+  // Which campaign has an in-flight start/pause/resume/stop (disables its buttons).
+  const [campaignActionId, setCampaignActionId] = useState(null)
+  // Synchronous lock so a fast double-click fires the action only once, before
+  // React re-renders the disabled button.
+  const campaignActionLock = useRef(new Set())
   const [previewLead, setPreviewLead] = useState(null)
   const [preview, setPreview] = useState(null)
   const [previewLoading, setPreviewLoading] = useState(false)
@@ -746,16 +751,29 @@ export default function App() {
   }
 
   const campaignAction = async (id, action) => {
+    // Hard synchronous guard against a double-click: the ref updates immediately
+    // (unlike setState), so a second click in the same tick is dropped before it
+    // can fire a second request. The server also atomically claims draft→running,
+    // so a concurrent start can never enqueue twice.
+    if (campaignActionLock.current.has(id)) return
+    campaignActionLock.current.add(id)
+    setCampaignActionId(id)
     try {
       const { data } = await axios.post(`${API}/campaigns/${id}/${action}`)
-      if (action === 'start' && data.skipped > 0) {
+      if (action === 'start') {
         alert(
-          `Campaign started: ${data.enqueued} enqueued, ${data.skipped} lead(s) skipped (invalid email — see server logs).`,
+          `Campaign started — ${data.enqueued} email(s) queued` +
+            (data.skipped > 0
+              ? `, ${data.skipped} lead(s) skipped (invalid email — see server logs).`
+              : '. Sending runs in the background; watch the Live Queue.'),
         )
       }
       await fetchCampaigns()
     } catch (err) {
       alert(`Failed to ${action} campaign: ` + (err.response?.data?.error || err.message))
+    } finally {
+      campaignActionLock.current.delete(id)
+      setCampaignActionId(null)
     }
   }
 
@@ -1679,21 +1697,24 @@ export default function App() {
                           {c.status === 'draft' && (
                             <button
                               className='btn-start'
+                              disabled={campaignActionId === c._id}
                               onClick={() => campaignAction(c._id, 'start')}
                             >
-                              ▶ Start
+                              {campaignActionId === c._id ? 'Starting…' : '▶ Start'}
                             </button>
                           )}
                           {c.status === 'running' && (
                             <>
                               <button
                                 className='btn-ghost'
+                                disabled={campaignActionId === c._id}
                                 onClick={() => campaignAction(c._id, 'pause')}
                               >
                                 ❚❚ Pause
                               </button>
                               <button
                                 className='btn-stop'
+                                disabled={campaignActionId === c._id}
                                 onClick={() => campaignAction(c._id, 'stop')}
                               >
                                 ■ Stop
@@ -1704,12 +1725,14 @@ export default function App() {
                             <>
                               <button
                                 className='btn-start'
+                                disabled={campaignActionId === c._id}
                                 onClick={() => campaignAction(c._id, 'resume')}
                               >
-                                ▶ Resume
+                                {campaignActionId === c._id ? 'Resuming…' : '▶ Resume'}
                               </button>
                               <button
                                 className='btn-stop'
+                                disabled={campaignActionId === c._id}
                                 onClick={() => campaignAction(c._id, 'stop')}
                               >
                                 ■ Stop

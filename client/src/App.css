@@ -332,6 +332,11 @@ select {
   font-size: 13.5px;
   cursor: pointer;
 }
+.btn-stop:disabled,
+.btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 .btn-ghost {
   background: var(--surface2);
