@@ -242,10 +242,24 @@ const stop = async (id) => {
     throw badRequest(`Cannot stop a ${campaign.status} campaign`)
   campaign.status = 'stopped'
   await campaign.save()
+  // Cancel the not-yet-sent items so nothing more goes out…
+  const pending = await QueuedEmail.find({
+    campaignId: campaign._id,
+    status: { $in: ['pending', 'scheduled'] },
+  }).select('leadId')
   await QueuedEmail.updateMany(
     { campaignId: campaign._id, status: { $in: ['pending', 'scheduled'] } },
     { $set: { status: 'cancelled', errorMessage: 'campaign stopped' } },
   )
+  // …and release their leads back to 'new' (they were never sent), so they can
+  // be targeted again by a re-start or another campaign instead of being
+  // stranded in 'queued' with no live queue item.
+  const leadIds = pending.map((q) => q.leadId)
+  if (leadIds.length)
+    await Lead.updateMany(
+      { _id: { $in: leadIds }, status: 'queued' },
+      { $set: { status: 'new' } },
+    )
   return campaign
 }
 

@@ -845,12 +845,24 @@ export default function App() {
     try {
       const { data } = await axios.post(`${API}/campaigns/${id}/${action}`)
       if (action === 'start') {
-        alert(
-          `Campaign started — ${data.enqueued} email(s) queued` +
-            (data.skipped > 0
-              ? `, ${data.skipped} lead(s) skipped (invalid email — see server logs).`
-              : '. Sending runs in the background; watch the Live Queue.'),
-        )
+        if (data.enqueued > 0) {
+          alert(
+            `Campaign started — ${data.enqueued} email(s) queued.` +
+              (data.skipped > 0
+                ? ` ${data.skipped} lead(s) skipped (invalid email — see server logs).`
+                : '') +
+              ' Sending runs in the background; watch the Live Queue.',
+          )
+        } else {
+          // Nothing to send — explain why (this is the common "0 queued" case).
+          alert(
+            `Campaign started, but 0 emails were queued — no eligible leads found.` +
+              (data.skipped > 0
+                ? ` ${data.skipped} lead(s) were skipped for invalid emails.`
+                : '') +
+              `\n\nOnly leads with status "new" are sent (already-contacted or in-progress leads are skipped so no one is emailed twice). Add new leads to the target list, or re-open a list's leads and check their status.`,
+          )
+        }
       }
       await fetchCampaigns()
     } catch (err) {
