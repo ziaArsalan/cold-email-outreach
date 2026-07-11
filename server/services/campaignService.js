@@ -54,9 +54,22 @@ const enqueueStepForLead = async (campaign, lead, stepIndex, scheduledAt) => {
     website: lead.website || '',
     ai_intro: lead.aiIntro || '',
   }
-  const subject = render(template.subject, vars)
+  const renderedSubject = render(template.subject, vars)
   let body = render(template.body, vars)
   if (template.signature) body += '\n\n' + render(template.signature, vars)
+  let subject = renderedSubject
+
+  // Per-lead full body override — initial email (step 0) only. When set, send the
+  // custom body verbatim (custom subject if provided, else the rendered one).
+  // Follow-up steps always render their own templates.
+  if (
+    stepIndex === 0 &&
+    typeof lead.bodyOverride === 'string' &&
+    lead.bodyOverride.trim()
+  ) {
+    body = lead.bodyOverride
+    subject = lead.subjectOverride || renderedSubject
+  }
 
   return enqueue({
     campaignId: campaign._id,

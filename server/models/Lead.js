@@ -29,6 +29,10 @@ const leadSchema = new mongoose.Schema(
     },
     aiIntro: String,
     aiSubject: String,
+    // Per-lead full body override — when set, the initial (step 0) email uses
+    // these verbatim instead of rendering the template + ai_intro.
+    subjectOverride: String,
+    bodyOverride: String,
     // Pre-send screening result (format/MX/disposable/role-based) — set at
     // campaign start, before enqueue. Not a paid-verifier mailbox check.
     emailCheckStatus: {

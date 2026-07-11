@@ -565,6 +565,35 @@ tbody tr:hover td {
   text-transform: capitalize;
 }
 
+/* Log category pills */
+.badge-smtp,
+.badge-queue {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--accent);
+  text-transform: capitalize;
+}
+.badge-campaign {
+  background: rgba(34, 197, 94, 0.14);
+  color: var(--success);
+  text-transform: capitalize;
+}
+.badge-ai,
+.badge-rotation {
+  background: rgba(168, 85, 247, 0.16);
+  color: #a855f7;
+  text-transform: capitalize;
+}
+.badge-retry {
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--warning);
+  text-transform: capitalize;
+}
+.badge-error {
+  background: rgba(239, 68, 68, 0.14);
+  color: var(--error);
+  text-transform: capitalize;
+}
+
 /* Mailbox health badges */
 .health-healthy {
   background: rgba(34, 197, 94, 0.14);

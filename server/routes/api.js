@@ -23,7 +23,7 @@ const {
 } = require('../services/authService')
 const config = require('../jobs/config')
 const mongoose = require('mongoose')
-const { Lead, List, Template, Mailbox, Campaign, QueuedEmail } = require('../models')
+const { Lead, List, Template, Mailbox, Campaign, QueuedEmail, SendLog } = require('../models')
 const { upsertLeadsIntoList } = require('../services/leadImportService')
 const sheetsService = require('../services/sheetsService')
 const { parse } = require('csv-parse/sync')
@@ -682,11 +682,274 @@ router.post('/leads/:id/preview', async (req, res) => {
       website: lead.website || '',
       ai_intro: lead.aiIntro || '',
     }
-    const subject = render(template.subject, vars)
+    const renderedSubject = render(template.subject, vars)
     let body = render(template.body, vars)
     if (template.signature) body += '\n\n' + render(template.signature, vars)
+    let subject = renderedSubject
 
-    res.json({ success: true, subject, body, cached })
+    // If the lead has a full body override, show what will actually send.
+    const overridden =
+      typeof lead.bodyOverride === 'string' && !!lead.bodyOverride.trim()
+    if (overridden) {
+      body = lead.bodyOverride
+      subject = lead.subjectOverride || renderedSubject
+    }
+
+    res.json({ success: true, subject, body, cached, overridden })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// PUT /api/leads/:id/email — set a per-lead full body override (custom email).
+// Also patches any not-yet-sent step-0 queue item so an already-queued email
+// reflects the edit.
+router.put('/leads/:id/email', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { subject, body } = req.body || {}
+    if (typeof body !== 'string' || !body.trim())
+      return res
+        .status(400)
+        .json({ success: false, error: 'body must be a non-empty string' })
+
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    lead.subjectOverride = subject || ''
+    lead.bodyOverride = body
+    await lead.save()
+
+    await QueuedEmail.updateMany(
+      {
+        leadId: lead._id,
+        stepIndex: 0,
+        status: { $in: ['pending', 'scheduled'] },
+      },
+      { $set: { subject: subject || '(no subject)', body } },
+    )
+
+    res.json({
+      success: true,
+      lead: {
+        _id: lead._id,
+        subjectOverride: lead.subjectOverride,
+        bodyOverride: lead.bodyOverride,
+      },
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// DELETE /api/leads/:id/email — clear the override (revert to template + intro).
+// Does not touch already-queued items; this reverts the stored override for
+// future enqueues.
+router.delete('/leads/:id/email', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    lead.subjectOverride = undefined
+    lead.bodyOverride = undefined
+    await lead.save()
+
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/leads/:id/regenerate — clear + re-generate this lead's AI intro.
+router.post('/leads/:id/regenerate', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    lead.aiIntro = undefined
+    lead.aiSubject = undefined
+    let intro, subject
+    try {
+      ;({ intro, subject } = await generateIntro(lead))
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message })
+    }
+    lead.aiIntro = intro
+    lead.aiSubject = subject
+    await lead.save()
+
+    res.json({ success: true, intro, subject })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/lists/:id/regenerate — regenerate the AI intro for every lead in a
+// list ('unassigned' = no list). One AI call per lead; per-lead failures are
+// caught so the batch keeps going.
+router.post('/lists/:id/regenerate', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const filter =
+      req.params.id === 'unassigned'
+        ? { listId: null }
+        : { listId: req.params.id }
+    let leads
+    try {
+      leads = await Lead.find(filter)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'List not found' })
+      throw err
+    }
+
+    let regenerated = 0
+    let failed = 0
+    for (const lead of leads) {
+      try {
+        lead.aiIntro = undefined
+        lead.aiSubject = undefined
+        const { intro, subject } = await generateIntro(lead)
+        lead.aiIntro = intro
+        lead.aiSubject = subject
+        await lead.save()
+        regenerated += 1
+      } catch (err) {
+        failed += 1
+      }
+    }
+
+    res.json({ success: true, regenerated, failed })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/leads/:id/resend — reset a lead to 'new' so a campaign re-queues it.
+router.post('/leads/:id/resend', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    lead.status = 'new'
+    await lead.save()
+
+    res.json({ success: true, lead: { _id: lead._id, status: lead.status } })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/logs — SendLog viewer with category/since filters + pagination.
+router.get('/logs', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50))
+
+    const CATEGORIES = [
+      'smtp',
+      'queue',
+      'campaign',
+      'ai',
+      'rotation',
+      'retry',
+      'error',
+    ]
+    const filter = {}
+    if (req.query.category && CATEGORIES.includes(req.query.category))
+      filter.category = req.query.category
+    if (req.query.since) {
+      const since = new Date(req.query.since)
+      if (!isNaN(since.getTime())) filter.timestamp = { $gte: since }
+    }
+
+    const [items, total] = await Promise.all([
+      SendLog.find(filter)
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      SendLog.countDocuments(filter),
+    ])
+    const pages = Math.max(1, Math.ceil(total / limit))
+
+    // Resolve campaign names in one query.
+    const campaignIds = [
+      ...new Set(
+        items
+          .map((i) => i.refs && i.refs.campaignId)
+          .filter(Boolean)
+          .map(String),
+      ),
+    ]
+    const nameById = {}
+    if (campaignIds.length) {
+      const campaigns = await Campaign.find({ _id: { $in: campaignIds } })
+        .select('name')
+        .lean()
+      for (const c of campaigns) nameById[String(c._id)] = c.name
+    }
+    for (const i of items)
+      i.campaignName =
+        i.refs && i.refs.campaignId
+          ? nameById[String(i.refs.campaignId)] || null
+          : null
+
+    res.json({ success: true, items, total, page, pages })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }

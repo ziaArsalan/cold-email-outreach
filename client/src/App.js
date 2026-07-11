@@ -59,23 +59,103 @@ const statusColor = (s) => {
 
 // Default value pre-filled into a new campaign's "AI Prompt" field. These are
 // extra instructions appended to the server-side intro prompt (aiService).
-const DEFAULT_AI_PROMPT = `You are an expert B2B sales copywriter.
+const DEFAULT_AI_PROMPT = `You are an experienced B2B Sales Development Representative (SDR).
 
-Your task is to write only a personalised opening paragraph for a cold email.
+Your task is to write only the opening of a cold email after spending about 60 seconds researching a company.
 
-Rules:
+## Objective
 
-Write 1–2 short sentences (maximum 50 words).
-Mention something specific about the company, website, industry, or recent activity.
-Sound natural and conversational.
-Do not use hype or marketing buzzwords.
-Do not mention Devtronics or LoyalIdeas.
-Do not pitch or sell anything.
-Do not greet or sign off.
-Do not use double dashes.
-Return only the personalised intro with no explanations or formatting.
+Write an opening that feels like it was written by a real person, not AI.
 
-The goal is to make the recipient feel the email was written specifically for them.`
+## Rules
+
+* Write only 1–2 short sentences.
+* Maximum 35 words.
+* Mention one specific observation about the company, website, Google Business Profile, LinkedIn, menu, services, products, or recent activity.
+* Sound casual, direct, and conversational.
+* Write at a Grade 6–8 reading level.
+* Vary sentence structure so every opening feels different.
+* Avoid sounding polished or overly professional.
+
+## Never use
+
+* Em dashes (—)
+* Double dashes (--)
+* Semicolons (;)
+* Colons (:)
+* Bullet points
+* Quotes
+* Exclamation marks
+* Parentheses unless absolutely necessary
+
+## Never start with
+
+* I noticed...
+* I came across...
+* I found...
+* I was looking at...
+* I saw...
+* It's impressive...
+* Congratulations on...
+* Hope you're doing well...
+* I hope this email finds you well...
+
+## Avoid these words
+
+impressive
+
+amazing
+
+exciting
+
+innovative
+
+remarkable
+
+incredible
+
+fantastic
+
+leading
+
+world-class
+
+best-in-class
+
+great
+
+awesome
+
+## Don't
+
+* Compliment the company just to be polite.
+* Pitch your service.
+* Mention Devtronics.
+* Mention LoyalIdeas.
+* Mention AI.
+* Mention that you researched them.
+
+## Good examples
+
+Your seasonal menu changes caught my attention. It looks like you regularly give returning customers something new to try.
+
+Your restaurant has several locations across Riyadh. Keeping customers coming back consistently becomes even more important as you grow.
+
+The online ordering experience is straightforward, and your seafood platters seem to be one of the main attractions.
+
+Your Google reviews mention the family atmosphere quite a bit. That's something many restaurants struggle to build consistently.
+
+## Output
+
+Return only the personalized opening paragraph.
+
+No greeting.
+
+No signature.
+
+No explanation.
+
+No markdown.`
 
 // Default state for the "New Campaign" form.
 const BLANK_CAMPAIGN = {
@@ -101,8 +181,7 @@ const SAMPLE_VARS = {
   company: 'Acme Co',
   industry: 'SaaS',
   website: 'acme.co',
-  ai_intro:
-    'I noticed Acme just shipped a new dashboard — clean work.',
+  ai_intro: 'I noticed Acme just shipped a new dashboard, clean work.',
 }
 
 // Replace {{var}} tokens with the provided values (blank for unknown keys).
@@ -125,8 +204,7 @@ const scheduleSummary = (schedule) => {
 const fmtDate = (d) => (d ? new Date(d).toLocaleString() : '—')
 
 // Truncate long strings for table cells (full value shown via title attr).
-const trunc = (s, n = 40) =>
-  s && s.length > n ? s.slice(0, n) + '…' : s || ''
+const trunc = (s, n = 40) => (s && s.length > n ? s.slice(0, n) + '…' : s || '')
 
 function LoginScreen({ onSuccess }) {
   const [email, setEmail] = React.useState('')
@@ -139,7 +217,10 @@ function LoginScreen({ onSuccess }) {
     setLoading(true)
     setError('')
     try {
-      const { data } = await axios.post(`${API}/auth/login`, { email, password })
+      const { data } = await axios.post(`${API}/auth/login`, {
+        email,
+        password,
+      })
       localStorage.setItem('token', data.token)
       axios.defaults.headers.common['Authorization'] = 'Bearer ' + data.token
       onSuccess()
@@ -183,7 +264,11 @@ function LoginScreen({ onSuccess }) {
             />
           </div>
           {error && <div className='login-error'>{error}</div>}
-          <button className='btn-start login-btn' type='submit' disabled={loading}>
+          <button
+            className='btn-start login-btn'
+            type='submit'
+            disabled={loading}
+          >
             {loading ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
@@ -205,7 +290,11 @@ export default function App() {
   const [importBusy, setImportBusy] = useState(false)
   const [importSummary, setImportSummary] = useState(null)
   const [sheetImport, setSheetImport] = useState({ sheetId: '', tab: '' })
-  const [leadPreview, setLeadPreview] = useState(null)
+  const [emailModal, setEmailModal] = useState(null)
+  // Logs viewer (SendLog)
+  const [logs, setLogs] = useState({ items: [], total: 0, page: 1, pages: 1 })
+  const [logsCategory, setLogsCategory] = useState('')
+  const [logsSince, setLogsSince] = useState('')
   const [campaigns, setCampaigns] = useState([])
   const [templates, setTemplates] = useState([])
   const [mailboxes, setMailboxes] = useState([])
@@ -339,7 +428,11 @@ export default function App() {
   }
 
   const deleteList = async (list) => {
-    if (!window.confirm(`Delete list "${list.name}"? Its leads become unassigned.`))
+    if (
+      !window.confirm(
+        `Delete list "${list.name}"? Its leads become unassigned.`,
+      )
+    )
       return
     try {
       await axios.delete(`${API}/lists/${list._id}`)
@@ -435,23 +528,150 @@ export default function App() {
     }
   }
 
-  const openLeadPreview = async (leadId) => {
-    setLeadPreview({ loading: true })
+  // Open the editable email modal for a lead — loads what will actually send.
+  const openLeadEmail = async (lead) => {
+    setEmailModal({ leadId: lead._id, email: lead.email, loading: true })
     try {
-      const { data } = await axios.post(`${API}/leads/${leadId}/preview`)
-      setLeadPreview({ subject: data.subject, body: data.body, loading: false })
+      const { data } = await axios.post(`${API}/leads/${lead._id}/preview`)
+      setEmailModal({
+        leadId: lead._id,
+        email: lead.email,
+        subject: data.subject,
+        body: data.body,
+        overridden: !!data.overridden,
+        loading: false,
+        saving: false,
+      })
     } catch (err) {
-      setLeadPreview({
+      setEmailModal({
+        leadId: lead._id,
+        email: lead.email,
         subject: 'Error',
         body: err.response?.data?.error || err.message,
+        overridden: false,
         loading: false,
+        saving: false,
       })
+    }
+  }
+
+  // Save the edited email as a per-lead full body override.
+  const saveLeadEmail = async () => {
+    if (!emailModal) return
+    setEmailModal((m) => ({ ...m, saving: true }))
+    try {
+      await axios.put(`${API}/leads/${emailModal.leadId}/email`, {
+        subject: emailModal.subject,
+        body: emailModal.body,
+      })
+      setEmailModal(null)
+      if (openList) await fetchListLeads(openList._id, listLeads.page)
+    } catch (err) {
+      alert(
+        'Failed to save email: ' + (err.response?.data?.error || err.message),
+      )
+      setEmailModal((m) => ({ ...m, saving: false }))
+    }
+  }
+
+  // Revert to the template + AI intro, then refresh the modal from a fresh preview.
+  const revertLeadEmail = async () => {
+    if (!emailModal) return
+    const leadId = emailModal.leadId
+    const email = emailModal.email
+    setEmailModal((m) => ({ ...m, saving: true }))
+    try {
+      await axios.delete(`${API}/leads/${leadId}/email`)
+      await openLeadEmail({ _id: leadId, email })
+      if (openList) await fetchListLeads(openList._id, listLeads.page)
+    } catch (err) {
+      alert(
+        'Failed to revert email: ' + (err.response?.data?.error || err.message),
+      )
+      setEmailModal((m) => ({ ...m, saving: false }))
+    }
+  }
+
+  // Regenerate this lead's AI intro, then refresh the modal from a fresh preview.
+  const regenerateLeadIntro = async () => {
+    if (!emailModal) return
+    const leadId = emailModal.leadId
+    const email = emailModal.email
+    setEmailModal((m) => ({ ...m, saving: true }))
+    try {
+      await axios.post(`${API}/leads/${leadId}/regenerate`)
+      await openLeadEmail({ _id: leadId, email })
+    } catch (err) {
+      alert(
+        'Failed to regenerate intro: ' +
+          (err.response?.data?.error || err.message),
+      )
+      setEmailModal((m) => ({ ...m, saving: false }))
+    }
+  }
+
+  // Regenerate the AI intro for every lead in the open list.
+  const regenerateListIntros = async () => {
+    if (!openList) return
+    if (
+      !window.confirm(
+        'Regenerate AI intros for every lead in this list? This calls the AI once per lead.',
+      )
+    )
+      return
+    try {
+      const { data } = await axios.post(
+        `${API}/lists/${openList._id}/regenerate`,
+      )
+      alert(`Regenerated ${data.regenerated} intros (${data.failed} failed)`)
+      await fetchListLeads(openList._id, listLeads.page)
+    } catch (err) {
+      alert(
+        'Failed to regenerate intros: ' +
+          (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  // Reset a lead to 'new' so a campaign re-queues it.
+  const resendLead = async (lead) => {
+    if (
+      !window.confirm(
+        `Resend to ${lead.email}? This marks the lead new so a campaign will email them again.`,
+      )
+    )
+      return
+    try {
+      await axios.post(`${API}/leads/${lead._id}/resend`)
+      if (openList) await fetchListLeads(openList._id, listLeads.page)
+    } catch (err) {
+      alert('Failed to resend: ' + (err.response?.data?.error || err.message))
     }
   }
 
   const markListLead = async (leadId, action) => {
     await markLead(leadId, action)
     if (openList) await fetchListLeads(openList._id, listLeads.page)
+  }
+
+  // ── Logs viewer (SendLog) ──
+  const fetchLogs = async (
+    category = logsCategory,
+    page = 1,
+    since = logsSince,
+  ) => {
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: '50' })
+      if (category) params.set('category', category)
+      if (since) params.set('since', new Date(since).toISOString())
+      const { data } = await axios.get(`${API}/logs?${params.toString()}`)
+      setLogs({
+        items: data.items || [],
+        total: data.total || 0,
+        page: data.page || 1,
+        pages: data.pages || 1,
+      })
+    } catch (e) {}
   }
 
   // ── Dashboard analytics + live queue (T-012) ──
@@ -584,8 +804,7 @@ export default function App() {
       await Promise.all([fetchMailboxes(), fetchDashboardAll()])
     } catch (err) {
       alert(
-        'Failed to save mailbox: ' +
-          (err.response?.data?.error || err.message),
+        'Failed to save mailbox: ' + (err.response?.data?.error || err.message),
       )
     } finally {
       setMailboxBusy(false)
@@ -604,8 +823,7 @@ export default function App() {
       await Promise.all([fetchMailboxes(), fetchDashboardAll()])
     } catch (err) {
       alert(
-        'Failed to test mailbox: ' +
-          (err.response?.data?.error || err.message),
+        'Failed to test mailbox: ' + (err.response?.data?.error || err.message),
       )
     } finally {
       setMailboxBusy(false)
@@ -651,7 +869,11 @@ export default function App() {
     e.preventDefault()
     // Explicit guard so save failures always surface a message (not just the
     // browser's native required-field bubble, which is easy to miss).
-    if (!templateForm.name.trim() || !templateForm.subject.trim() || !templateForm.body.trim()) {
+    if (
+      !templateForm.name.trim() ||
+      !templateForm.subject.trim() ||
+      !templateForm.body.trim()
+    ) {
       alert('Name, Subject and Body are all required.')
       return
     }
@@ -682,11 +904,7 @@ export default function App() {
   }
 
   const deleteTemplate = async (t) => {
-    if (
-      !window.confirm(
-        `Delete template "${t.name}"? This cannot be undone.`,
-      )
-    )
+    if (!window.confirm(`Delete template "${t.name}"? This cannot be undone.`))
       return
     try {
       await axios.delete(`${API}/templates/${t._id}`)
@@ -800,7 +1018,13 @@ export default function App() {
       mailboxIds: (c.mailboxIds || []).map(String),
       dailyLimit: c.dailyLimit ?? 20,
       warmupEnabled: c.warmupEnabled !== false,
-      days: (c.schedule && c.schedule.days) || ['mon', 'tue', 'wed', 'thu', 'fri'],
+      days: (c.schedule && c.schedule.days) || [
+        'mon',
+        'tue',
+        'wed',
+        'thu',
+        'fri',
+      ],
       startTime: (c.schedule && c.schedule.startTime) || '09:00',
       endTime: (c.schedule && c.schedule.endTime) || '17:00',
     })
@@ -827,7 +1051,10 @@ export default function App() {
       if (editingCampaignId === c._id) cancelEditCampaign()
       await fetchCampaigns()
     } catch (err) {
-      alert('Failed to delete campaign: ' + (err.response?.data?.error || err.message))
+      alert(
+        'Failed to delete campaign: ' +
+          (err.response?.data?.error || err.message),
+      )
     } finally {
       campaignActionLock.current.delete(c._id)
       setCampaignActionId(null)
@@ -866,7 +1093,10 @@ export default function App() {
       }
       await fetchCampaigns()
     } catch (err) {
-      alert(`Failed to ${action} campaign: ` + (err.response?.data?.error || err.message))
+      alert(
+        `Failed to ${action} campaign: ` +
+          (err.response?.data?.error || err.message),
+      )
     } finally {
       campaignActionLock.current.delete(id)
       setCampaignActionId(null)
@@ -1033,15 +1263,17 @@ export default function App() {
     if (!outreachDraft) return
     setOutreachSaving(true)
     try {
-      const { data } = await axios.put(`${API}/outreach-settings`, outreachDraft)
+      const { data } = await axios.put(
+        `${API}/outreach-settings`,
+        outreachDraft,
+      )
       setOutreachSettings(data.settings)
       setOutreachDraft(data.settings)
       setOutreachSaved(true)
       setTimeout(() => setOutreachSaved(false), 2000)
     } catch (e) {
       alert(
-        'Failed to save settings: ' +
-          (e.response?.data?.error || e.message),
+        'Failed to save settings: ' + (e.response?.data?.error || e.message),
       )
     } finally {
       setOutreachSaving(false)
@@ -1166,6 +1398,15 @@ export default function App() {
           >
             <span className='nav-icon'>◎</span> Settings
           </button>
+          <button
+            className={tab === 'logs' ? 'nav-item active' : 'nav-item'}
+            onClick={() => {
+              setTab('logs')
+              fetchLogs()
+            }}
+          >
+            <span className='nav-icon'>▦</span> Logs
+          </button>
           {tab === 'preview' && (
             <button className='nav-item active'>
               <span className='nav-icon'>◌</span> Preview
@@ -1246,7 +1487,10 @@ export default function App() {
             <div className='card table-card'>
               <div
                 className='bulk-actions'
-                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+                style={{
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
               >
                 <h2 style={{ margin: 0 }}>Mailboxes</h2>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1274,7 +1518,10 @@ export default function App() {
                       <input
                         value={mailboxForm.name}
                         onChange={(e) =>
-                          setMailboxForm((f) => ({ ...f, name: e.target.value }))
+                          setMailboxForm((f) => ({
+                            ...f,
+                            name: e.target.value,
+                          }))
                         }
                         placeholder='Alex'
                         required
@@ -1286,7 +1533,10 @@ export default function App() {
                         type='email'
                         value={mailboxForm.email}
                         onChange={(e) =>
-                          setMailboxForm((f) => ({ ...f, email: e.target.value }))
+                          setMailboxForm((f) => ({
+                            ...f,
+                            email: e.target.value,
+                          }))
                         }
                         placeholder='alex@meetdevtronics.com'
                         required
@@ -1297,7 +1547,10 @@ export default function App() {
                       <input
                         value={mailboxForm.host}
                         onChange={(e) =>
-                          setMailboxForm((f) => ({ ...f, host: e.target.value }))
+                          setMailboxForm((f) => ({
+                            ...f,
+                            host: e.target.value,
+                          }))
                         }
                         placeholder='mail.privateemail.com'
                         required
@@ -1309,7 +1562,10 @@ export default function App() {
                         type='number'
                         value={mailboxForm.port}
                         onChange={(e) =>
-                          setMailboxForm((f) => ({ ...f, port: e.target.value }))
+                          setMailboxForm((f) => ({
+                            ...f,
+                            port: e.target.value,
+                          }))
                         }
                         required
                       />
@@ -1471,10 +1727,7 @@ export default function App() {
                     ? '✓ Connection verified.'
                     : '✗ Connection failed.'}
                   {mailboxTestResult.warnings.length > 0 && (
-                    <>
-                      {' '}
-                      Warnings: {mailboxTestResult.warnings.join('; ')}
-                    </>
+                    <> Warnings: {mailboxTestResult.warnings.join('; ')}</>
                   )}
                 </p>
               )}
@@ -1516,11 +1769,10 @@ export default function App() {
                               ? `On (since ${fmtDate(mb.warmupStartDate).split(',')[0]})`
                               : 'Off'}
                           </td>
-                          <td>{mb.pausedUntil ? fmtDate(mb.pausedUntil) : '—'}</td>
-                          <td
-                            className='cell-trunc'
-                            title={mb.lastError || ''}
-                          >
+                          <td>
+                            {mb.pausedUntil ? fmtDate(mb.pausedUntil) : '—'}
+                          </td>
+                          <td className='cell-trunc' title={mb.lastError || ''}>
                             {trunc(mb.lastError, 40) || '—'}
                           </td>
                           <td>
@@ -1586,7 +1838,9 @@ export default function App() {
                           <tr key={c._id}>
                             <td>{c.name}</td>
                             <td>
-                              <span className={`status-badge badge-${c.status}`}>
+                              <span
+                                className={`status-badge badge-${c.status}`}
+                              >
                                 {c.status}
                               </span>
                             </td>
@@ -1608,7 +1862,10 @@ export default function App() {
             <div className='card table-card'>
               <div
                 className='bulk-actions'
-                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+                style={{
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
               >
                 <h2 style={{ margin: 0 }}>Live Queue</h2>
                 <div className='queue-controls'>
@@ -1664,7 +1921,9 @@ export default function App() {
                           <td>{item.campaignName || '—'}</td>
                           <td>{(item.stepIndex || 0) + 1}</td>
                           <td>
-                            <span className={`status-badge badge-${item.status}`}>
+                            <span
+                              className={`status-badge badge-${item.status}`}
+                            >
                               {item.status}
                             </span>
                           </td>
@@ -1750,7 +2009,10 @@ export default function App() {
             <div className='card'>
               <div
                 className='bulk-actions'
-                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+                style={{
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
               >
                 <h2 style={{ margin: 0 }}>Your Campaigns</h2>
                 <button className='btn-ghost' onClick={fetchCampaigns}>
@@ -1770,9 +2032,7 @@ export default function App() {
                         <div className='campaign-main'>
                           <div className='campaign-title'>
                             <span className='campaign-name'>{c.name}</span>
-                            <span
-                              className={`status-badge badge-${c.status}`}
-                            >
+                            <span className={`status-badge badge-${c.status}`}>
                               {c.status}
                             </span>
                           </div>
@@ -1797,7 +2057,9 @@ export default function App() {
                                 disabled={campaignActionId === c._id}
                                 onClick={() => campaignAction(c._id, 'start')}
                               >
-                                {campaignActionId === c._id ? 'Starting…' : '▶ Start'}
+                                {campaignActionId === c._id
+                                  ? 'Starting…'
+                                  : '▶ Start'}
                               </button>
                               <button
                                 className='btn-ghost'
@@ -1840,7 +2102,9 @@ export default function App() {
                                 disabled={campaignActionId === c._id}
                                 onClick={() => campaignAction(c._id, 'resume')}
                               >
-                                {campaignActionId === c._id ? 'Resuming…' : '▶ Resume'}
+                                {campaignActionId === c._id
+                                  ? 'Resuming…'
+                                  : '▶ Resume'}
                               </button>
                               <button
                                 className='btn-stop'
@@ -2103,7 +2367,11 @@ export default function App() {
                   </div>
                 </div>
                 <div
-                  style={{ marginTop: '1.25rem', display: 'flex', gap: '0.5rem' }}
+                  style={{
+                    marginTop: '1.25rem',
+                    display: 'flex',
+                    gap: '0.5rem',
+                  }}
                 >
                   <button
                     className='btn-start'
@@ -2143,7 +2411,10 @@ export default function App() {
             <div className='card table-card'>
               <div
                 className='bulk-actions'
-                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+                style={{
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
               >
                 <h2 style={{ margin: 0 }}>Your Templates</h2>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -2416,7 +2687,10 @@ export default function App() {
             <div className='card table-card'>
               <div
                 className='bulk-actions'
-                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+                style={{
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
               >
                 <h2 style={{ margin: 0 }}>Your Lists</h2>
                 <button className='btn-ghost' onClick={fetchLists}>
@@ -2502,6 +2776,9 @@ export default function App() {
               </button>
               <h1>{openList.name}</h1>
               <p>{listLeads.items.length} shown on this page</p>
+              <button className='btn-ghost' onClick={regenerateListIntros}>
+                ↻ Regenerate all intros
+              </button>
             </div>
 
             {/* Import controls — real lists only */}
@@ -2655,17 +2932,25 @@ export default function App() {
                             )}
                           </td>
                           <td>
-                            <span className={`status-badge badge-${lead.status}`}>
+                            <span
+                              className={`status-badge badge-${lead.status}`}
+                            >
                               {lead.status}
                             </span>
                           </td>
                           <td>
-                            <div style={{ display: 'flex', gap: '0.4rem' }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: '0.4rem',
+                                flexWrap: 'wrap',
+                              }}
+                            >
                               <button
                                 className='btn-preview'
-                                onClick={() => openLeadPreview(lead._id)}
+                                onClick={() => openLeadEmail(lead)}
                               >
-                                Preview
+                                Email
                               </button>
                               <button
                                 className='btn-ghost'
@@ -2683,6 +2968,16 @@ export default function App() {
                               >
                                 Mark bounced
                               </button>
+                              {['contacted', 'replied', 'bounced', 'failed'].includes(
+                                lead.status,
+                              ) && (
+                                <button
+                                  className='btn-ghost'
+                                  onClick={() => resendLead(lead)}
+                                >
+                                  Resend
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -2800,7 +3095,9 @@ export default function App() {
             {/* Stats */}
             <div className='stats-grid'>
               <div className='stat-card'>
-                <span className='stat-num'>{upworkStats?.totalJobs ?? '—'}</span>
+                <span className='stat-num'>
+                  {upworkStats?.totalJobs ?? '—'}
+                </span>
                 <span className='stat-label'>Total Jobs</span>
               </div>
               <div className='stat-card'>
@@ -2988,9 +3285,7 @@ export default function App() {
                 >
                   {upworkSettingsSaving ? 'Saving…' : 'Save Settings'}
                 </button>
-                {upworkSettingsSaved && (
-                  <span className='badge-ok'>Saved</span>
-                )}
+                {upworkSettingsSaved && <span className='badge-ok'>Saved</span>}
               </div>
               <div className='control-group' style={{ marginTop: '1.25rem' }}>
                 <button
@@ -3035,7 +3330,10 @@ export default function App() {
             <div className='card table-card'>
               <div
                 className='bulk-actions'
-                style={{ justifyContent: 'space-between', alignItems: 'center' }}
+                style={{
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
               >
                 <h2 style={{ margin: 0 }}>Upwork Jobs</h2>
                 <button
@@ -3182,7 +3480,9 @@ export default function App() {
                   />
                   <span className='toggle-slider' />
                   <span className='toggle-label'>
-                    {(outreachDraft?.queueWorkerEnabled ?? false) ? 'ON' : 'OFF'}
+                    {(outreachDraft?.queueWorkerEnabled ?? false)
+                      ? 'ON'
+                      : 'OFF'}
                   </span>
                 </label>
               </div>
@@ -3228,7 +3528,9 @@ export default function App() {
                               ...s.delays,
                               [mode]: {
                                 ...s.delays[mode],
-                                minMs: Math.round(Number(e.target.value) * 60000),
+                                minMs: Math.round(
+                                  Number(e.target.value) * 60000,
+                                ),
                               },
                             },
                           }))
@@ -3253,7 +3555,9 @@ export default function App() {
                               ...s.delays,
                               [mode]: {
                                 ...s.delays[mode],
-                                maxMs: Math.round(Number(e.target.value) * 60000),
+                                maxMs: Math.round(
+                                  Number(e.target.value) * 60000,
+                                ),
                               },
                             },
                           }))
@@ -3297,7 +3601,9 @@ export default function App() {
                       }))
                     }
                   />
-                  <span className='field-note'>Poll interval when idle (1–600s)</span>
+                  <span className='field-note'>
+                    Poll interval when idle (1–600s)
+                  </span>
                 </div>
               </div>
 
@@ -3352,13 +3658,18 @@ export default function App() {
                 {[
                   ['checkMX', 'Require MX record'],
                   ['blockDisposable', 'Block disposable domains'],
-                  ['blockRoleBased', 'Block role-based inboxes (info@, admin@)'],
+                  [
+                    'blockRoleBased',
+                    'Block role-based inboxes (info@, admin@)',
+                  ],
                 ].map(([key, label]) => (
                   <div className='control-group' key={key}>
                     <label className='checkbox-row'>
                       <input
                         type='checkbox'
-                        checked={outreachDraft?.emailVerification?.[key] ?? false}
+                        checked={
+                          outreachDraft?.emailVerification?.[key] ?? false
+                        }
                         onChange={(e) =>
                           setOutreachDraft((s) => ({
                             ...s,
@@ -3449,29 +3760,204 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* ── LOGS TAB ── */}
+        {tab === 'logs' && (
+          <div className='tab-content'>
+            <div className='page-header'>
+              <h1>Logs</h1>
+              <p>Send activity — newest first</p>
+            </div>
+
+            <div className='card table-card'>
+              <div className='queue-controls' style={{ marginBottom: '1rem' }}>
+                <select
+                  value={logsCategory}
+                  onChange={(e) => {
+                    setLogsCategory(e.target.value)
+                    fetchLogs(e.target.value, 1, logsSince)
+                  }}
+                >
+                  <option value=''>All categories</option>
+                  {[
+                    'smtp',
+                    'queue',
+                    'campaign',
+                    'ai',
+                    'rotation',
+                    'retry',
+                    'error',
+                  ].map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type='date'
+                  value={logsSince}
+                  onChange={(e) => {
+                    setLogsSince(e.target.value)
+                    fetchLogs(logsCategory, 1, e.target.value)
+                  }}
+                />
+                <button
+                  className='btn-ghost'
+                  onClick={() => fetchLogs(logsCategory, logs.page, logsSince)}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {logs.items.length === 0 ? (
+                <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                  No log entries.
+                </p>
+              ) : (
+                <div className='table-wrapper'>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Category</th>
+                        <th>Level</th>
+                        <th>Campaign</th>
+                        <th>Message</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logs.items.map((l) => (
+                        <tr key={l._id}>
+                          <td>{new Date(l.timestamp).toLocaleString()}</td>
+                          <td>
+                            <span
+                              className={`status-badge badge-${l.category}`}
+                            >
+                              {l.category || '—'}
+                            </span>
+                          </td>
+                          <td>{l.level || '—'}</td>
+                          <td>{l.campaignName || '—'}</td>
+                          <td className='cell-trunc' title={l.message}>
+                            {l.message}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className='queue-pagination'>
+                <button
+                  className='btn-ghost'
+                  disabled={logs.page <= 1}
+                  onClick={() =>
+                    fetchLogs(logsCategory, logs.page - 1, logsSince)
+                  }
+                >
+                  ← Prev
+                </button>
+                <span className='queue-page-label'>
+                  Page {logs.page} of {logs.pages}
+                </span>
+                <button
+                  className='btn-ghost'
+                  disabled={logs.page >= logs.pages}
+                  onClick={() =>
+                    fetchLogs(logsCategory, logs.page + 1, logsSince)
+                  }
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* ── Lead preview modal (T-017) ── */}
-      {leadPreview && (
-        <div className='modal-overlay' onClick={() => setLeadPreview(null)}>
+      {/* ── Editable email modal (per-lead full body override) ── */}
+      {emailModal && (
+        <div className='modal-overlay' onClick={() => setEmailModal(null)}>
           <div className='modal-card' onClick={(e) => e.stopPropagation()}>
             <button
               className='modal-close btn-ghost'
-              onClick={() => setLeadPreview(null)}
+              onClick={() => setEmailModal(null)}
             >
               ✕ Close
             </button>
-            {leadPreview.loading ? (
+            {emailModal.loading ? (
               <div className='loading-card'>
                 <div className='spinner' />
-                <p>Generating preview…</p>
+                <p>Loading email…</p>
               </div>
             ) : (
               <>
-                <p style={{ margin: '0 0 0.75rem' }}>
-                  <strong>Subject:</strong> {leadPreview.subject}
-                </p>
-                <pre>{leadPreview.body}</pre>
+                <h2 style={{ margin: '0 0 0.75rem' }}>Edit Email</h2>
+                {emailModal.overridden && (
+                  <p className='field-note' style={{ marginBottom: '0.75rem' }}>
+                    Overridden (custom) — this full body will be sent as-is,
+                    ignoring the template. Regenerating the intro updates the
+                    underlying AI intro, but this override still wins for
+                    sending.
+                  </p>
+                )}
+                <div className='control-group'>
+                  <label>Subject</label>
+                  <input
+                    type='text'
+                    value={emailModal.subject || ''}
+                    onChange={(e) =>
+                      setEmailModal((m) => ({ ...m, subject: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className='control-group'>
+                  <label>Body</label>
+                  <textarea
+                    rows={14}
+                    value={emailModal.body || ''}
+                    onChange={(e) =>
+                      setEmailModal((m) => ({ ...m, body: e.target.value }))
+                    }
+                  />
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '0.5rem',
+                    flexWrap: 'wrap',
+                    marginTop: '1rem',
+                  }}
+                >
+                  <button
+                    className='btn-start'
+                    disabled={emailModal.saving}
+                    onClick={saveLeadEmail}
+                  >
+                    {emailModal.saving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    className='btn-ghost'
+                    disabled={emailModal.saving}
+                    onClick={regenerateLeadIntro}
+                  >
+                    Regenerate intro
+                  </button>
+                  <button
+                    className='btn-ghost'
+                    disabled={emailModal.saving}
+                    onClick={revertLeadEmail}
+                  >
+                    Revert to template
+                  </button>
+                  <button
+                    className='btn-ghost'
+                    onClick={() => setEmailModal(null)}
+                  >
+                    Close
+                  </button>
+                </div>
               </>
             )}
           </div>
