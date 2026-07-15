@@ -832,6 +832,16 @@ router.post('/lists/:id/regenerate', async (req, res) => {
       req.params.id === 'unassigned'
         ? { listId: null }
         : { listId: req.params.id }
+    // Optional { leadIds } narrows the run to just those leads (bulk action on
+    // a checkbox selection); omit it to regenerate the whole list.
+    const { leadIds } = req.body || {}
+    if (leadIds !== undefined) {
+      if (!Array.isArray(leadIds) || !leadIds.length)
+        return res
+          .status(400)
+          .json({ success: false, error: 'leadIds must be a non-empty array' })
+      filter._id = { $in: leadIds }
+    }
     let leads
     try {
       leads = await Lead.find(filter)
@@ -885,6 +895,33 @@ router.post('/leads/:id/resend', async (req, res) => {
     await lead.save()
 
     res.json({ success: true, lead: { _id: lead._id, status: lead.status } })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// DELETE /api/leads/:id — remove a lead and any of its queued emails.
+router.delete('/leads/:id', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let lead
+    try {
+      lead = await Lead.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Lead not found' })
+      throw err
+    }
+    if (!lead)
+      return res.status(404).json({ success: false, error: 'Lead not found' })
+
+    // Drop its queue items too so nothing dangles or tries to send later.
+    await QueuedEmail.deleteMany({ leadId: lead._id })
+    await Lead.findByIdAndDelete(lead._id)
+    res.json({ success: true })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }

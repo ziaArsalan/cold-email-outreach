@@ -1,10 +1,12 @@
-// Cover-letter generation in Zia's brand voice via Claude.
-// Mirrors the axios call style in aiService.js (x-api-key, anthropic-version
-// 2023-06-01). Single prompt builder so the voice can be refined in one place.
+// Upwork cover-letter generation in Zia's brand voice.
+// ACTIVE PROVIDER: Google Gemini (see geminiClient.js) — switched from Anthropic
+// Claude on 2026-07-16. The previous Claude implementation is preserved
+// COMMENTED OUT at the bottom in case we switch back.
+//
+// Unlike the outreach intros, cover letters never used web search — the job
+// description is passed in — so moving to Gemini loses nothing here.
 
-const axios = require('axios');
-
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const { generateText } = require('./geminiClient')
 
 const PROPOSAL_PROMPT = (job) => `
 You are writing an Upwork cover letter on behalf of Zia Arsalan Abdullah, senior full-stack developer and founder of Devtronics (devtronics.co), with 10+ years of experience.
@@ -32,44 +34,60 @@ Rules for the cover letter:
 - Reference relevant portfolio items only when they genuinely fit the job.
 - NEVER use generic filler such as "I am hardworking", "I am a great fit", "I am passionate", "I am the perfect candidate", "I have a keen eye for detail".
 - Write it as a ready-to-send letter — no preamble, no headers, no markdown, no commentary. Return ONLY the letter text.
-`;
+`
 
 const generateProposal = async (job) => {
-  const response = await axios
-    .post(
-      ANTHROPIC_API_URL,
-      {
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [
-          {
-            role: 'user',
-            content: PROPOSAL_PROMPT(job),
-          },
-        ],
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-      },
-    )
-    .catch((err) => {
-      console.log('Proposal AI Error', err.message);
-      throw err;
-    });
+  const letter = await generateText(PROPOSAL_PROMPT(job))
+  if (!letter) throw new Error('No text returned from Gemini for proposal')
+  return letter
+}
 
-  const content = response.data.content || [];
-  const textBlocks = content.filter((b) => b.type === 'text').map((b) => b.text);
-  const letter = (textBlocks[textBlocks.length - 1] || '').trim();
+module.exports = { generateProposal }
 
-  if (!letter) {
-    throw new Error('No text returned from Claude for proposal');
-  }
-
-  return letter;
-};
-
-module.exports = { generateProposal };
+/* ────────────────────────────────────────────────────────────────────────────
+ * PREVIOUS PROVIDER — Anthropic Claude. Preserved so we can switch back:
+ * restore this code, drop the geminiClient import above, and set
+ * ANTHROPIC_API_KEY in server/.env. The PROPOSAL_PROMPT above is unchanged and
+ * is shared by both providers.
+ *
+ * const axios = require('axios');
+ * const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+ *
+ * const generateProposalClaude = async (job) => {
+ *   const response = await axios
+ *     .post(
+ *       ANTHROPIC_API_URL,
+ *       {
+ *         model: 'claude-sonnet-4-6',
+ *         max_tokens: 1000,
+ *         messages: [
+ *           {
+ *             role: 'user',
+ *             content: PROPOSAL_PROMPT(job),
+ *           },
+ *         ],
+ *       },
+ *       {
+ *         headers: {
+ *           'Content-Type': 'application/json',
+ *           'x-api-key': process.env.ANTHROPIC_API_KEY,
+ *           'anthropic-version': '2023-06-01',
+ *         },
+ *       },
+ *     )
+ *     .catch((err) => {
+ *       console.log('Proposal AI Error', err.message);
+ *       throw err;
+ *     });
+ *
+ *   const content = response.data.content || [];
+ *   const textBlocks = content.filter((b) => b.type === 'text').map((b) => b.text);
+ *   const letter = (textBlocks[textBlocks.length - 1] || '').trim();
+ *
+ *   if (!letter) {
+ *     throw new Error('No text returned from Claude for proposal');
+ *   }
+ *
+ *   return letter;
+ * };
+ * ──────────────────────────────────────────────────────────────────────────── */

@@ -285,6 +285,8 @@ export default function App() {
   const [openList, setOpenList] = useState(null)
   const [listLeads, setListLeads] = useState({ items: [], page: 1, pages: 1 })
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set())
+  // Bulk/all intro regeneration in flight (one AI call per lead — can be slow).
+  const [regenBusy, setRegenBusy] = useState(false)
   const [newListForm, setNewListForm] = useState({ name: '', description: '' })
   const [assignTarget, setAssignTarget] = useState('')
   const [importBusy, setImportBusy] = useState(false)
@@ -611,17 +613,25 @@ export default function App() {
   }
 
   // Regenerate the AI intro for every lead in the open list.
-  const regenerateListIntros = async () => {
+  // Regenerate AI intros for the whole list, or just the checkbox selection
+  // when `onlySelected` is true (bulk action).
+  const regenerateListIntros = async (onlySelected = false) => {
     if (!openList) return
+    const count = onlySelected ? selectedLeadIds.size : null
+    if (onlySelected && !count) return
     if (
       !window.confirm(
-        'Regenerate AI intros for every lead in this list? This calls the AI once per lead.',
+        onlySelected
+          ? `Regenerate AI intros for the ${count} selected lead(s)? This calls the AI once per lead.`
+          : 'Regenerate AI intros for every lead in this list? This calls the AI once per lead.',
       )
     )
       return
+    setRegenBusy(true)
     try {
       const { data } = await axios.post(
         `${API}/lists/${openList._id}/regenerate`,
+        onlySelected ? { leadIds: [...selectedLeadIds] } : {},
       )
       alert(`Regenerated ${data.regenerated} intros (${data.failed} failed)`)
       await fetchListLeads(openList._id, listLeads.page)
@@ -629,6 +639,34 @@ export default function App() {
       alert(
         'Failed to regenerate intros: ' +
           (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setRegenBusy(false)
+    }
+  }
+
+  // Delete a single lead (and its queued emails) after confirmation.
+  const deleteLead = async (lead) => {
+    if (
+      !window.confirm(
+        `Delete lead ${lead.email}? This removes the lead and any queued emails for them. This cannot be undone.`,
+      )
+    )
+      return
+    try {
+      await axios.delete(`${API}/leads/${lead._id}`)
+      setSelectedLeadIds((prev) => {
+        const next = new Set(prev)
+        next.delete(lead._id)
+        return next
+      })
+      await Promise.all([
+        fetchListLeads(openList._id, listLeads.page),
+        fetchLists(),
+      ])
+    } catch (err) {
+      alert(
+        'Failed to delete lead: ' + (err.response?.data?.error || err.message),
       )
     }
   }
@@ -2776,8 +2814,12 @@ export default function App() {
               </button>
               <h1>{openList.name}</h1>
               <p>{listLeads.items.length} shown on this page</p>
-              <button className='btn-ghost' onClick={regenerateListIntros}>
-                ↻ Regenerate all intros
+              <button
+                className='btn-ghost'
+                onClick={() => regenerateListIntros(false)}
+                disabled={regenBusy}
+              >
+                {regenBusy ? 'Regenerating…' : '↻ Regenerate all intros'}
               </button>
             </div>
 
@@ -2874,6 +2916,15 @@ export default function App() {
                   disabled={!assignTarget || selectedLeadIds.size === 0}
                 >
                   Assign
+                </button>
+                <button
+                  className='btn-ghost'
+                  onClick={() => regenerateListIntros(true)}
+                  disabled={selectedLeadIds.size === 0 || regenBusy}
+                >
+                  {regenBusy
+                    ? 'Regenerating…'
+                    : `↻ Regenerate selected (${selectedLeadIds.size})`}
                 </button>
               </div>
             </div>
@@ -2978,6 +3029,12 @@ export default function App() {
                                   Resend
                                 </button>
                               )}
+                              <button
+                                className='btn-stop'
+                                onClick={() => deleteLead(lead)}
+                              >
+                                Delete
+                              </button>
                             </div>
                           </td>
                         </tr>
