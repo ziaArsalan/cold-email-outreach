@@ -350,6 +350,10 @@ export default function App() {
   // Template management (add/edit/delete)
   const [templateForm, setTemplateForm] = useState(null) // null = closed
   const [templateBusy, setTemplateBusy] = useState(false)
+  // Template test-send modal: pick a list (for sample vars) + a recipient.
+  const [templateTest, setTemplateTest] = useState(null)
+  // Campaign View modal: per-campaign queue items + logs.
+  const [campaignView, setCampaignView] = useState(null)
 
   const logout = () => {
     localStorage.removeItem('token')
@@ -955,6 +959,52 @@ export default function App() {
     }
   }
 
+  // Open the test-send modal for a template: needs lists (sample-lead source)
+  // and mailboxes (to prefill the recipient with your own address).
+  const openTemplateTest = async (t) => {
+    setTemplateTest({
+      templateId: t._id,
+      templateName: t.name,
+      listId: '',
+      to: mailboxes[0]?.email || '',
+      sending: false,
+      result: null,
+    })
+    if (!lists.length) fetchLists()
+    if (!mailboxes.length) {
+      try {
+        const { data } = await axios.get(`${API}/mailboxes`)
+        setMailboxes(data.mailboxes || [])
+        const own = data.mailboxes?.[0]?.email
+        if (own)
+          setTemplateTest((s) => (s && !s.to ? { ...s, to: own } : s))
+      } catch (e) {}
+    }
+  }
+
+  const sendTemplateTest = async () => {
+    if (!templateTest || !templateTest.listId || !templateTest.to.trim()) return
+    setTemplateTest((s) => ({ ...s, sending: true, result: null }))
+    try {
+      const { data } = await axios.post(
+        `${API}/templates/${templateTest.templateId}/test`,
+        { listId: templateTest.listId, to: templateTest.to.trim() },
+      )
+      setTemplateTest((s) => ({
+        ...s,
+        sending: false,
+        result: `Test sent to ${data.to} (rendered with sample lead ${data.sampleLead}).`,
+      }))
+    } catch (err) {
+      setTemplateTest((s) => ({
+        ...s,
+        sending: false,
+        result:
+          'Failed: ' + (err.response?.data?.error || err.message),
+      }))
+    }
+  }
+
   // ── Campaigns ──
   const fetchCampaigns = async () => {
     try {
@@ -1096,6 +1146,35 @@ export default function App() {
     } finally {
       campaignActionLock.current.delete(c._id)
       setCampaignActionId(null)
+    }
+  }
+
+  // Open the per-campaign View modal: its queue items + its logs, side by side.
+  const openCampaignView = async (c) => {
+    setCampaignView({ campaign: c, loading: true, queue: [], logs: [] })
+    try {
+      const [q, l] = await Promise.all([
+        axios.get(`${API}/queue?campaignId=${c._id}&limit=50`),
+        axios.get(`${API}/logs?campaignId=${c._id}&limit=50`),
+      ])
+      setCampaignView((s) =>
+        s && s.campaign._id === c._id
+          ? {
+              ...s,
+              loading: false,
+              queue: q.data.items || [],
+              logs: l.data.items || [],
+            }
+          : s,
+      )
+    } catch (err) {
+      setCampaignView((s) =>
+        s && s.campaign._id === c._id ? { ...s, loading: false } : s,
+      )
+      alert(
+        'Failed to load campaign activity: ' +
+          (err.response?.data?.error || err.message),
+      )
     }
   }
 
@@ -2088,6 +2167,12 @@ export default function App() {
                           </div>
                         </div>
                         <div className='campaign-actions'>
+                          <button
+                            className='btn-ghost'
+                            onClick={() => openCampaignView(c)}
+                          >
+                            ⊙ View
+                          </button>
                           {c.status === 'draft' && (
                             <>
                               <button
@@ -2513,6 +2598,12 @@ export default function App() {
                           </td>
                           <td>
                             <div style={{ display: 'flex', gap: '0.4rem' }}>
+                              <button
+                                className='btn-preview'
+                                onClick={() => openTemplateTest(t)}
+                              >
+                                Test
+                              </button>
                               <button
                                 className='btn-ghost'
                                 onClick={() => openEditTemplateForm(t)}
@@ -4015,6 +4106,227 @@ export default function App() {
                     Close
                   </button>
                 </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Template test-send modal ── */}
+      {templateTest && (
+        <div className='modal-overlay' onClick={() => setTemplateTest(null)}>
+          <div className='modal-card' onClick={(e) => e.stopPropagation()}>
+            <button
+              className='modal-close btn-ghost'
+              onClick={() => setTemplateTest(null)}
+            >
+              ✕ Close
+            </button>
+            <h3 style={{ marginTop: 0 }}>
+              Send test — {templateTest.templateName}
+            </h3>
+            <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+              Sends ONE email to the address below, rendered with a sample lead
+              from the chosen list so the variables look real. No leads are
+              emailed or modified.
+            </p>
+            <div className='control-group' style={{ marginBottom: '0.9rem' }}>
+              <label>Sample lead from list</label>
+              <select
+                value={templateTest.listId}
+                onChange={(e) =>
+                  setTemplateTest((s) => ({ ...s, listId: e.target.value }))
+                }
+              >
+                <option value=''>Select a list…</option>
+                <option value='unassigned'>Unassigned</option>
+                {lists.map((l) => (
+                  <option key={l._id} value={l._id}>
+                    {l.name} ({l.leadCount} leads)
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className='control-group' style={{ marginBottom: '0.9rem' }}>
+              <label>Send test to</label>
+              <input
+                type='email'
+                value={templateTest.to}
+                onChange={(e) =>
+                  setTemplateTest((s) => ({ ...s, to: e.target.value }))
+                }
+                placeholder='you@yourdomain.com'
+              />
+            </div>
+            {templateTest.result && (
+              <p
+                style={{
+                  fontSize: '13px',
+                  color: templateTest.result.startsWith('Failed')
+                    ? 'var(--error)'
+                    : 'var(--success)',
+                }}
+              >
+                {templateTest.result}
+              </p>
+            )}
+            <button
+              className='btn-start'
+              onClick={sendTemplateTest}
+              disabled={
+                templateTest.sending ||
+                !templateTest.listId ||
+                !templateTest.to.trim()
+              }
+            >
+              {templateTest.sending ? 'Sending…' : 'Send test email'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Campaign View modal (queue + logs) ── */}
+      {campaignView && (
+        <div className='modal-overlay' onClick={() => setCampaignView(null)}>
+          <div
+            className='modal-card'
+            style={{ maxWidth: 920, width: '95%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className='modal-close btn-ghost'
+              onClick={() => setCampaignView(null)}
+            >
+              ✕ Close
+            </button>
+            <h3 style={{ marginTop: 0 }}>
+              {campaignView.campaign.name}{' '}
+              <span
+                className={`status-badge badge-${campaignView.campaign.status}`}
+              >
+                {campaignView.campaign.status}
+              </span>
+            </h3>
+            <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+              {campaignView.campaign.listName
+                ? `List: ${campaignView.campaign.listName} · `
+                : ''}
+              pending {campaignView.campaign.counts?.pending || 0} · sent{' '}
+              {campaignView.campaign.counts?.sent || 0} · failed{' '}
+              {campaignView.campaign.counts?.failed || 0} · cancelled{' '}
+              {campaignView.campaign.counts?.cancelled || 0}
+            </p>
+            {campaignView.loading ? (
+              <div className='loading-card'>
+                <div className='spinner' />
+                <p>Loading campaign activity…</p>
+              </div>
+            ) : (
+              <>
+                <h4 style={{ margin: '1rem 0 0.5rem' }}>
+                  Emails ({campaignView.queue.length})
+                </h4>
+                {campaignView.queue.length === 0 ? (
+                  <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                    No queued emails yet.
+                  </p>
+                ) : (
+                  <div className='table-wrapper'>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Lead</th>
+                          <th>Step</th>
+                          <th>Status</th>
+                          <th>Scheduled</th>
+                          <th>Sent</th>
+                          <th>Error</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {campaignView.queue.map((item) => (
+                          <tr key={item._id}>
+                            <td className='td-email'>
+                              {item.leadEmail || '—'}
+                            </td>
+                            <td>{(item.stepIndex || 0) + 1}</td>
+                            <td>
+                              <span
+                                className={`status-badge badge-${item.status}`}
+                              >
+                                {item.status}
+                              </span>
+                            </td>
+                            <td>
+                              {item.scheduledAt
+                                ? new Date(item.scheduledAt).toLocaleString()
+                                : '—'}
+                            </td>
+                            <td>
+                              {item.sentAt
+                                ? new Date(item.sentAt).toLocaleString()
+                                : '—'}
+                            </td>
+                            <td
+                              className='cell-trunc'
+                              title={item.errorMessage || ''}
+                            >
+                              {item.errorMessage
+                                ? item.errorMessage.slice(0, 40)
+                                : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <h4 style={{ margin: '1.25rem 0 0.5rem' }}>
+                  Logs ({campaignView.logs.length})
+                </h4>
+                {campaignView.logs.length === 0 ? (
+                  <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                    No log entries for this campaign yet.
+                  </p>
+                ) : (
+                  <div
+                    className='table-wrapper'
+                    style={{ maxHeight: 260, overflowY: 'auto' }}
+                  >
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Category</th>
+                          <th>Message</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {campaignView.logs.map((log) => (
+                          <tr key={log._id}>
+                            <td>
+                              {new Date(log.timestamp).toLocaleString()}
+                            </td>
+                            <td>
+                              <span
+                                className={`status-badge badge-${log.category}`}
+                              >
+                                {log.category}
+                              </span>
+                            </td>
+                            <td
+                              className='cell-trunc'
+                              style={{ maxWidth: 420 }}
+                              title={log.message || ''}
+                            >
+                              {log.message}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </>
             )}
           </div>

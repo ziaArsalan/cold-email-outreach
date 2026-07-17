@@ -617,6 +617,76 @@ router.delete('/templates/:id', async (req, res) => {
   }
 })
 
+// POST /api/templates/:id/test — send ONE test email of this template to `to`,
+// rendered with a sample lead from the chosen list (so the vars look real).
+// Never touches the lead or the queue — a direct one-off send, subject-prefixed
+// "[TEST]".
+router.post('/templates/:id/test', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { listId, to } = req.body || {}
+    if (typeof to !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to.trim()))
+      return res
+        .status(400)
+        .json({ success: false, error: 'A valid "to" email address is required' })
+    if (!listId)
+      return res
+        .status(400)
+        .json({ success: false, error: 'listId is required' })
+
+    let template
+    try {
+      template = await Template.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res
+          .status(404)
+          .json({ success: false, error: 'Template not found' })
+      throw err
+    }
+    if (!template)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Template not found' })
+
+    // Sample lead from the chosen list ('unassigned' supported) for realistic vars.
+    const leadFilter = listId === 'unassigned' ? { listId: null } : { listId }
+    let sampleLead
+    try {
+      sampleLead = await Lead.findOne(leadFilter).sort({ createdAt: -1 })
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'List not found' })
+      throw err
+    }
+    if (!sampleLead)
+      return res.status(400).json({
+        success: false,
+        error: 'That list has no leads to sample — import some first',
+      })
+
+    const vars = {
+      first_name: sampleLead.firstName || '',
+      last_name: sampleLead.lastName || '',
+      company: sampleLead.company || '',
+      industry: sampleLead.industry || '',
+      website: sampleLead.website || '',
+      ai_intro: sampleLead.aiIntro || '',
+    }
+    const subject = `[TEST] ${render(template.subject, vars)}`
+    let body = render(template.body, vars)
+    if (template.signature) body += '\n\n' + render(template.signature, vars)
+
+    await sendEmail({ to: to.trim(), subject, body })
+    res.json({ success: true, to: to.trim(), sampleLead: sampleLead.email })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/leads/:id/preview — render a template with an AI-generated intro
 router.post('/leads/:id/preview', async (req, res) => {
   if (!dbReady())
@@ -952,6 +1022,16 @@ router.get('/logs', async (req, res) => {
     if (req.query.since) {
       const since = new Date(req.query.since)
       if (!isNaN(since.getTime())) filter.timestamp = { $gte: since }
+    }
+    // Optional per-campaign filter (used by the campaign View modal).
+    if (req.query.campaignId) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.campaignId))
+        return res
+          .status(400)
+          .json({ success: false, error: 'Invalid campaignId' })
+      filter['refs.campaignId'] = new mongoose.Types.ObjectId(
+        req.query.campaignId,
+      )
     }
 
     const [items, total] = await Promise.all([
@@ -1552,6 +1632,14 @@ router.get('/queue', async (req, res) => {
     const filter = QUEUE_STATUSES.includes(req.query.status)
       ? { status: req.query.status }
       : {}
+    // Optional per-campaign filter (used by the campaign View modal).
+    if (req.query.campaignId) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.campaignId))
+        return res
+          .status(400)
+          .json({ success: false, error: 'Invalid campaignId' })
+      filter.campaignId = new mongoose.Types.ObjectId(req.query.campaignId)
+    }
 
     const [docs, total] = await Promise.all([
       QueuedEmail.find(filter)
