@@ -350,7 +350,7 @@ export default function App() {
   // Template management (add/edit/delete)
   const [templateForm, setTemplateForm] = useState(null) // null = closed
   const [templateBusy, setTemplateBusy] = useState(false)
-  // Template test-send modal: pick a list (for sample vars) + a recipient.
+  // Template test modal: send the real template to every lead in a tester list.
   const [templateTest, setTemplateTest] = useState(null)
   // Campaign View modal: per-campaign queue items + logs.
   const [campaignView, setCampaignView] = useState(null)
@@ -959,48 +959,66 @@ export default function App() {
     }
   }
 
-  // Open the test-send modal for a template: needs lists (sample-lead source)
-  // and mailboxes (to prefill the recipient with your own address).
+  // Open the template test modal: pick a (tester) list to send the real template
+  // email to, plus the history of past test runs for this template.
   const openTemplateTest = async (t) => {
     setTemplateTest({
       templateId: t._id,
       templateName: t.name,
       listId: '',
-      to: mailboxes[0]?.email || '',
       sending: false,
       result: null,
+      history: [],
     })
     if (!lists.length) fetchLists()
-    if (!mailboxes.length) {
-      try {
-        const { data } = await axios.get(`${API}/mailboxes`)
-        setMailboxes(data.mailboxes || [])
-        const own = data.mailboxes?.[0]?.email
-        if (own)
-          setTemplateTest((s) => (s && !s.to ? { ...s, to: own } : s))
-      } catch (e) {}
-    }
+    loadTemplateTestHistory(t._id)
+  }
+
+  const loadTemplateTestHistory = async (templateId) => {
+    try {
+      const { data } = await axios.get(
+        `${API}/templates/${templateId}/tests?limit=50`,
+      )
+      setTemplateTest((s) =>
+        s && s.templateId === templateId
+          ? { ...s, history: data.items || [] }
+          : s,
+      )
+    } catch (e) {}
   }
 
   const sendTemplateTest = async () => {
-    if (!templateTest || !templateTest.listId || !templateTest.to.trim()) return
+    if (!templateTest || !templateTest.listId) return
+    const list = lists.find((l) => l._id === templateTest.listId)
+    const count =
+      templateTest.listId === 'unassigned'
+        ? '(unassigned)'
+        : (list && list.leadCount) || '?'
+    if (
+      !window.confirm(
+        `Send the REAL template email to all ${count} lead(s) in "${
+          list ? list.name : 'Unassigned'
+        }"? These are actual sends (use your tester list).`,
+      )
+    )
+      return
     setTemplateTest((s) => ({ ...s, sending: true, result: null }))
     try {
       const { data } = await axios.post(
         `${API}/templates/${templateTest.templateId}/test`,
-        { listId: templateTest.listId, to: templateTest.to.trim() },
+        { listId: templateTest.listId },
       )
       setTemplateTest((s) => ({
         ...s,
         sending: false,
-        result: `Test sent to ${data.to} (rendered with sample lead ${data.sampleLead}).`,
+        result: `Test complete — ${data.sent} sent, ${data.failed} failed (of ${data.total}).`,
       }))
+      loadTemplateTestHistory(templateTest.templateId)
     } catch (err) {
       setTemplateTest((s) => ({
         ...s,
         sending: false,
-        result:
-          'Failed: ' + (err.response?.data?.error || err.message),
+        result: 'Failed: ' + (err.response?.data?.error || err.message),
       }))
     }
   }
@@ -3969,7 +3987,7 @@ export default function App() {
                         <th>Time</th>
                         <th>Category</th>
                         <th>Level</th>
-                        <th>Campaign</th>
+                        <th>Campaign / Template</th>
                         <th>Message</th>
                       </tr>
                     </thead>
@@ -3983,9 +4001,22 @@ export default function App() {
                             >
                               {l.category || '—'}
                             </span>
+                            {l.test && (
+                              <span
+                                className='status-badge badge-paused'
+                                style={{ marginLeft: 6 }}
+                              >
+                                TEST
+                              </span>
+                            )}
                           </td>
                           <td>{l.level || '—'}</td>
-                          <td>{l.campaignName || '—'}</td>
+                          <td>
+                            {l.campaignName ||
+                              (l.templateName
+                                ? `Template: ${l.templateName}`
+                                : '—')}
+                          </td>
                           <td className='cell-trunc' title={l.message}>
                             {l.message}
                           </td>
@@ -4112,10 +4143,14 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Template test-send modal ── */}
+      {/* ── Template test modal (send to a tester list + history) ── */}
       {templateTest && (
         <div className='modal-overlay' onClick={() => setTemplateTest(null)}>
-          <div className='modal-card' onClick={(e) => e.stopPropagation()}>
+          <div
+            className='modal-card'
+            style={{ maxWidth: 720, width: '95%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
               className='modal-close btn-ghost'
               onClick={() => setTemplateTest(null)}
@@ -4123,15 +4158,19 @@ export default function App() {
               ✕ Close
             </button>
             <h3 style={{ marginTop: 0 }}>
-              Send test — {templateTest.templateName}
+              Test template — {templateTest.templateName}
             </h3>
             <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
-              Sends ONE email to the address below, rendered with a sample lead
-              from the chosen list so the variables look real. No leads are
-              emailed or modified.
+              Sends the REAL template email (rendered per-lead, exactly like a
+              campaign — no test marker) to <strong>every lead</strong> in the
+              chosen list. Use your tester list. Each send is recorded below and
+              in Logs, labelled TEST.
             </p>
-            <div className='control-group' style={{ marginBottom: '0.9rem' }}>
-              <label>Sample lead from list</label>
+            <div
+              className='control-group'
+              style={{ marginBottom: '0.9rem', maxWidth: 360 }}
+            >
+              <label>Tester list (sends to all its leads)</label>
               <select
                 value={templateTest.listId}
                 onChange={(e) =>
@@ -4146,17 +4185,6 @@ export default function App() {
                   </option>
                 ))}
               </select>
-            </div>
-            <div className='control-group' style={{ marginBottom: '0.9rem' }}>
-              <label>Send test to</label>
-              <input
-                type='email'
-                value={templateTest.to}
-                onChange={(e) =>
-                  setTemplateTest((s) => ({ ...s, to: e.target.value }))
-                }
-                placeholder='you@yourdomain.com'
-              />
             </div>
             {templateTest.result && (
               <p
@@ -4173,14 +4201,68 @@ export default function App() {
             <button
               className='btn-start'
               onClick={sendTemplateTest}
-              disabled={
-                templateTest.sending ||
-                !templateTest.listId ||
-                !templateTest.to.trim()
-              }
+              disabled={templateTest.sending || !templateTest.listId}
             >
-              {templateTest.sending ? 'Sending…' : 'Send test email'}
+              {templateTest.sending
+                ? 'Sending…'
+                : '▶ Send test to all leads in list'}
             </button>
+
+            <h4 style={{ margin: '1.5rem 0 0.5rem' }}>
+              Test history ({templateTest.history.length})
+            </h4>
+            {templateTest.history.length === 0 ? (
+              <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
+                No tests run for this template yet.
+              </p>
+            ) : (
+              <div
+                className='table-wrapper'
+                style={{ maxHeight: 280, overflowY: 'auto' }}
+              >
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Recipient</th>
+                      <th>Result</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {templateTest.history.map((h) => (
+                      <tr key={h._id}>
+                        <td>{new Date(h.timestamp).toLocaleString()}</td>
+                        <td className='td-email'>
+                          {(h.meta && h.meta.to) || '—'}
+                        </td>
+                        <td>
+                          <span
+                            className={`status-badge badge-${
+                              h.level === 'error' ? 'failed' : 'sent'
+                            }`}
+                          >
+                            {h.level === 'error' ? 'failed' : 'sent'}
+                          </span>
+                          {h.meta && h.meta.error ? (
+                            <span
+                              className='cell-trunc'
+                              title={h.meta.error}
+                              style={{
+                                marginLeft: 8,
+                                color: 'var(--error)',
+                                fontSize: 12,
+                              }}
+                            >
+                              {String(h.meta.error).slice(0, 40)}
+                            </span>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}

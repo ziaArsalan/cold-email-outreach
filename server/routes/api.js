@@ -617,21 +617,19 @@ router.delete('/templates/:id', async (req, res) => {
   }
 })
 
-// POST /api/templates/:id/test — send ONE test email of this template to `to`,
-// rendered with a sample lead from the chosen list (so the vars look real).
-// Never touches the lead or the queue — a direct one-off send, subject-prefixed
-// "[TEST]".
+// POST /api/templates/:id/test — send the REAL template email to EVERY lead in
+// the chosen (tester) list, exactly as a campaign would: per-lead AI intro +
+// rendered template, no "[TEST]" marker, sent immediately (bypasses the queue).
+// Each send is recorded in SendLog with test:true so it shows in the Logs view
+// and the per-template test history. Leads' status is never changed — only the
+// aiIntro is cached (same as a campaign), so a tester list can be reused freely.
 router.post('/templates/:id/test', async (req, res) => {
   if (!dbReady())
     return res
       .status(503)
       .json({ success: false, error: 'Database unavailable' })
   try {
-    const { listId, to } = req.body || {}
-    if (typeof to !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to.trim()))
-      return res
-        .status(400)
-        .json({ success: false, error: 'A valid "to" email address is required' })
+    const { listId } = req.body || {}
     if (!listId)
       return res
         .status(400)
@@ -652,36 +650,106 @@ router.post('/templates/:id/test', async (req, res) => {
         .status(404)
         .json({ success: false, error: 'Template not found' })
 
-    // Sample lead from the chosen list ('unassigned' supported) for realistic vars.
     const leadFilter = listId === 'unassigned' ? { listId: null } : { listId }
-    let sampleLead
+    let leads
     try {
-      sampleLead = await Lead.findOne(leadFilter).sort({ createdAt: -1 })
+      leads = await Lead.find(leadFilter)
     } catch (err) {
       if (err.name === 'CastError')
         return res.status(404).json({ success: false, error: 'List not found' })
       throw err
     }
-    if (!sampleLead)
+    if (!leads.length)
       return res.status(400).json({
         success: false,
-        error: 'That list has no leads to sample — import some first',
+        error: 'That list has no leads — import some first',
       })
 
-    const vars = {
-      first_name: sampleLead.firstName || '',
-      last_name: sampleLead.lastName || '',
-      company: sampleLead.company || '',
-      industry: sampleLead.industry || '',
-      website: sampleLead.website || '',
-      ai_intro: sampleLead.aiIntro || '',
-    }
-    const subject = `[TEST] ${render(template.subject, vars)}`
-    let body = render(template.body, vars)
-    if (template.signature) body += '\n\n' + render(template.signature, vars)
+    let sent = 0
+    let failed = 0
+    const results = []
+    for (const lead of leads) {
+      // Match the campaign: cache an AI intro if the lead has none. Best-effort —
+      // an AI failure shouldn't abort the batch; we still send with a blank intro.
+      if (!(lead.aiIntro && lead.aiIntro.trim())) {
+        try {
+          const { intro, subject } = await generateIntro(lead)
+          lead.aiIntro = intro
+          if (!lead.aiSubject) lead.aiSubject = subject
+          await lead.save()
+        } catch (e) {}
+      }
+      const vars = {
+        first_name: lead.firstName || '',
+        last_name: lead.lastName || '',
+        company: lead.company || '',
+        industry: lead.industry || '',
+        website: lead.website || '',
+        ai_intro: lead.aiIntro || '',
+      }
+      const subject = render(template.subject, vars)
+      let body = render(template.body, vars)
+      if (template.signature) body += '\n\n' + render(template.signature, vars)
 
-    await sendEmail({ to: to.trim(), subject, body })
-    res.json({ success: true, to: to.trim(), sampleLead: sampleLead.email })
+      try {
+        await sendEmail({ to: lead.email, subject, body })
+        sent += 1
+        results.push({ email: lead.email, ok: true })
+        await SendLog.create({
+          level: 'info',
+          category: 'smtp',
+          test: true,
+          message: `TEST send OK → ${lead.email} (template "${template.name}")`,
+          refs: { templateId: template._id, leadId: lead._id },
+          meta: { to: lead.email, subject },
+        })
+      } catch (err) {
+        failed += 1
+        results.push({ email: lead.email, ok: false, error: err.message })
+        await SendLog.create({
+          level: 'error',
+          category: 'error',
+          test: true,
+          message: `TEST send FAILED → ${lead.email}: ${err.message}`,
+          refs: { templateId: template._id, leadId: lead._id },
+          meta: { to: lead.email, subject, error: err.message },
+        })
+      }
+    }
+
+    res.json({ success: true, sent, failed, total: leads.length, results })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/templates/:id/tests — history of test sends for this template.
+router.get('/templates/:id/tests', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id))
+      return res
+        .status(404)
+        .json({ success: false, error: 'Template not found' })
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50))
+    const filter = {
+      test: true,
+      'refs.templateId': new mongoose.Types.ObjectId(req.params.id),
+    }
+    const [items, total] = await Promise.all([
+      SendLog.find(filter)
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      SendLog.countDocuments(filter),
+    ])
+    const pages = Math.max(1, Math.ceil(total / limit))
+    res.json({ success: true, items, total, page, pages })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }
@@ -1033,6 +1101,9 @@ router.get('/logs', async (req, res) => {
         req.query.campaignId,
       )
     }
+    // Optional test filter: ?test=true (only test sends) / ?test=false (exclude).
+    if (req.query.test === 'true') filter.test = true
+    else if (req.query.test === 'false') filter.test = { $ne: true }
 
     const [items, total] = await Promise.all([
       SendLog.find(filter)
@@ -1064,6 +1135,28 @@ router.get('/logs', async (req, res) => {
       i.campaignName =
         i.refs && i.refs.campaignId
           ? nameById[String(i.refs.campaignId)] || null
+          : null
+
+    // Resolve template names for test-send rows in one query.
+    const templateIds = [
+      ...new Set(
+        items
+          .map((i) => i.refs && i.refs.templateId)
+          .filter(Boolean)
+          .map(String),
+      ),
+    ]
+    const tplNameById = {}
+    if (templateIds.length) {
+      const tpls = await Template.find({ _id: { $in: templateIds } })
+        .select('name')
+        .lean()
+      for (const t of tpls) tplNameById[String(t._id)] = t.name
+    }
+    for (const i of items)
+      i.templateName =
+        i.refs && i.refs.templateId
+          ? tplNameById[String(i.refs.templateId)] || null
           : null
 
     res.json({ success: true, items, total, page, pages })
