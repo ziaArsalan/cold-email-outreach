@@ -123,14 +123,39 @@ Guidance:
 
 ## Unsubscribe handling
 
-There is **no `List-Unsubscribe` header infrastructure yet**. Opt-outs are
-handled manually:
+Every outgoing email carries a **one-click unsubscribe** — a footer link plus
+RFC 8058 headers. Both are attached at **send time** by
+`server/services/unsubscribeService.js`, not stored in templates.
 
-- When a prospect asks to opt out, set the lead's status to **`unsubscribed`**
-  (a value in the Lead status enum). The scheduler will not target
-  `unsubscribed` leads.
-- Include a plain reply-to-opt-out line in the signature, e.g.
-  *"Not the right time? Just reply 'no' and I won't follow up."* This is honest,
-  low-friction, and keeps the body plain-text with no extra links.
-- Honor every opt-out promptly — mark the lead `unsubscribed` and cancel any
-  queued items for it.
+**Why this helps rather than hurts deliverability.** Since Feb 2024 Gmail and
+Yahoo expect bulk senders to offer one-click unsubscribe, and `List-Unsubscribe`
+is a positive reputation signal: it gives a recipient an exit that isn't the
+**Report spam** button, and spam complaints are what actually burn a domain. It
+is also required by CAN-SPAM. The link is `https://` on your own sending domain
+(not a redirect/tracker), which is what keeps it spam-filter-safe.
+
+How it works:
+
+- The URL is `${PUBLIC_BASE_URL}/api/unsubscribe?t=<leadId>.<HMAC>`, signed with
+  `JWT_SECRET`. Nothing is stored and the link can't be guessed or enumerated.
+- Headers sent on every message:
+  `List-Unsubscribe: <mailto:you@domain?subject=unsubscribe>, <https://…>` and
+  `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
+- `POST /api/unsubscribe` is the one-click endpoint Gmail/Yahoo call directly.
+  `GET /api/unsubscribe` is the human link and returns a confirmation page.
+  Both are **public** (recipients aren't logged in) — they sit above
+  `requireAuth` in `routes/api.js`.
+- Either one sets the lead to **`unsubscribed`**, **cancels every pending or
+  scheduled queue item for that lead** (so the whole follow-up sequence stops
+  immediately), and writes a `SendLog` entry. The scheduler also re-checks lead
+  status before each send, so an opt-out mid-sequence is honored.
+- The footer link is exempt from the one-link rule in `validateBody` because it
+  is added after validation — the template still gets its own single CTA link.
+
+**`PUBLIC_BASE_URL` must be a real, internet-reachable origin before you send
+for real.** The default falls back to `http://localhost:PORT`, which in a
+delivered email is a dead link — that blocks opt-outs and hurts deliverability.
+
+A reply-based opt-out (*"just reply 'no thanks'"*) can be offered too, but it
+can't be actioned automatically — you must mark those leads `unsubscribed`
+by hand.

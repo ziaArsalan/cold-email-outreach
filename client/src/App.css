@@ -559,7 +559,8 @@ tbody tr:hover td {
   color: var(--error);
   text-transform: capitalize;
 }
-.badge-cancelled {
+.badge-cancelled,
+.badge-unsubscribed {
   background: rgba(100, 116, 139, 0.15);
   color: var(--muted);
   text-transform: capitalize;

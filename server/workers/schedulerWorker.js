@@ -8,6 +8,7 @@ const { Lead, Mailbox, Campaign, QueuedEmail } = require('../models')
 const mailboxService = require('../services/mailboxService')
 const campaignService = require('../services/campaignService')
 const settingsService = require('../services/settingsService')
+const unsubscribeService = require('../services/unsubscribeService')
 const {
   claimNext,
   markSent,
@@ -123,17 +124,23 @@ const processOne = async (deps = {}) => {
 
     const provider = providerFor(mailbox)
 
+    // Append the opt-out footer + one-click List-Unsubscribe headers at SEND
+    // time, so every email (including per-lead body overrides and follow-up
+    // steps) carries them without spending the template's one-link budget.
+    const bodyWithFooter = item.body + unsubscribeService.footerFor(lead._id)
+
     try {
       const info = await provider.send({
         to,
         subject: item.subject,
-        text: item.body,
+        text: bodyWithFooter,
         html:
           campaign && campaign.htmlEnabled
-            ? item.body.replace(/\n/g, '<br/>')
+            ? bodyWithFooter.replace(/\n/g, '<br/>')
             : null,
         fromName: mailbox.name || process.env.FROM_NAME,
         fromEmail: mailbox.email,
+        headers: unsubscribeService.headersFor(lead._id, mailbox.email),
       })
 
       await markSent(item, info.response)

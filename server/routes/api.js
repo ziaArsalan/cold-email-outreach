@@ -38,6 +38,8 @@ const {
 } = require('../services/mailboxService')
 const { providerFor } = require('../services/smtp')
 const { domainMismatch } = require('../services/deliverabilityService')
+const unsubscribeService = require('../services/unsubscribeService')
+const { verifyToken: verifyUnsubToken } = unsubscribeService
 
 // Public login route — issues a JWT for valid credentials
 router.post('/auth/login', (req, res) => {
@@ -47,6 +49,76 @@ router.post('/auth/login', (req, res) => {
       .status(401)
       .json({ success: false, error: 'Invalid credentials' })
   res.json({ success: true, token: signToken(email) })
+})
+
+// ── Unsubscribe (PUBLIC — recipients aren't logged in) ──────────────────────
+// Must stay ABOVE requireAuth. Marks the lead unsubscribed and cancels anything
+// still queued for them, so an opt-out immediately stops the whole sequence.
+const applyUnsubscribe = async (token) => {
+  const leadId = verifyUnsubToken(token)
+  if (!leadId) return { ok: false, reason: 'invalid' }
+  if (!dbReady()) return { ok: false, reason: 'db' }
+  let lead
+  try {
+    lead = await Lead.findById(leadId)
+  } catch (err) {
+    return { ok: false, reason: 'invalid' }
+  }
+  if (!lead) return { ok: false, reason: 'invalid' }
+
+  if (lead.status !== 'unsubscribed') {
+    lead.status = 'unsubscribed'
+    await lead.save()
+    await QueuedEmail.updateMany(
+      { leadId: lead._id, status: { $in: ['pending', 'scheduled'] } },
+      { $set: { status: 'cancelled', errorMessage: 'lead unsubscribed' } },
+    )
+    await SendLog.create({
+      level: 'info',
+      category: 'campaign',
+      message: `Lead unsubscribed via email link: ${lead.email}`,
+      refs: { leadId: lead._id, campaignId: lead.campaignId || undefined },
+      meta: { email: lead.email },
+    })
+  }
+  return { ok: true, email: lead.email }
+}
+
+const unsubPage = (title, body) =>
+  `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f6f7f9;margin:0;padding:48px 16px;color:#111"><div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:32px"><h1 style="font-size:20px;margin:0 0 12px">${title}</h1><p style="font-size:15px;line-height:1.6;color:#374151;margin:0">${body}</p></div></body></html>`
+
+// GET — the link in the email. Unsubscribes and shows a confirmation page.
+router.get('/unsubscribe', async (req, res) => {
+  const result = await applyUnsubscribe(req.query.t)
+  if (!result.ok)
+    return res
+      .status(result.reason === 'db' ? 503 : 400)
+      .send(
+        unsubPage(
+          'Link not valid',
+          result.reason === 'db'
+            ? 'We could not process this right now. Please try again shortly.'
+            : 'This unsubscribe link is invalid or has expired. If you keep receiving emails, just reply to one and we will remove you.',
+        ),
+      )
+  res.send(
+    unsubPage(
+      'You have been unsubscribed',
+      `<strong>${result.email}</strong> has been removed and will not receive any further emails from us. Sorry for the interruption.`,
+    ),
+  )
+})
+
+// POST — RFC 8058 one-click, called automatically by Gmail/Yahoo. Must succeed
+// without any confirmation step.
+router.post('/unsubscribe', async (req, res) => {
+  const token = req.query.t || (req.body && req.body.t)
+  const result = await applyUnsubscribe(token)
+  if (!result.ok)
+    return res
+      .status(result.reason === 'db' ? 503 : 400)
+      .json({ success: false })
+  res.json({ success: true })
 })
 
 // All routes below this line require a valid token
@@ -690,9 +762,20 @@ router.post('/templates/:id/test', async (req, res) => {
       const subject = render(template.subject, vars)
       let body = render(template.body, vars)
       if (template.signature) body += '\n\n' + render(template.signature, vars)
+      // Same opt-out footer + headers a real campaign send would carry, so the
+      // test shows exactly what a lead receives.
+      body += unsubscribeService.footerFor(lead._id)
 
       try {
-        await sendEmail({ to: lead.email, subject, body })
+        await sendEmail({
+          to: lead.email,
+          subject,
+          body,
+          headers: unsubscribeService.headersFor(
+            lead._id,
+            process.env.FROM_EMAIL,
+          ),
+        })
         sent += 1
         results.push({ email: lead.email, ok: true })
         await SendLog.create({

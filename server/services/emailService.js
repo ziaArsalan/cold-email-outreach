@@ -10,11 +10,12 @@ const envMailbox = () => ({
   password: process.env.SMTP_PASS,
 })
 
-const sendEmail = async ({ to, subject, body }) => {
+const sendEmail = async ({ to, subject, body, headers }) => {
   return await providerFor(envMailbox()).send({
     to,
     subject,
     text: body,
+    headers,
     // Legacy Sheets flow intentionally keeps an HTML part (line-break formatted).
     // Only the campaign/queue path is plain-text-by-default for deliverability;
     // this one-off sheet send predates that policy and stays HTML on purpose.

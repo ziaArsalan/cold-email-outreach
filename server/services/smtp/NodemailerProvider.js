@@ -5,7 +5,15 @@ const config = require('../../config')
 // from/to/subject/text; sets `html` ONLY when html != null — we never fabricate
 // an HTML part from the text, so plain-text sends stay genuinely plain-text
 // (better cold-email deliverability). Exported for unit testing.
-const buildMailOptions = ({ to, subject, text, html, fromName, fromEmail }) => {
+const buildMailOptions = ({
+  to,
+  subject,
+  text,
+  html,
+  fromName,
+  fromEmail,
+  headers,
+}) => {
   const opts = {
     from: `"${fromName}" <${fromEmail}>`,
     to,
@@ -13,6 +21,8 @@ const buildMailOptions = ({ to, subject, text, html, fromName, fromEmail }) => {
     text,
   }
   if (html != null) opts.html = html
+  // Extra SMTP headers (e.g. List-Unsubscribe / List-Unsubscribe-Post).
+  if (headers && Object.keys(headers).length) opts.headers = headers
   return opts
 }
 

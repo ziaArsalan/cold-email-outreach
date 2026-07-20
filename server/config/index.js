@@ -9,6 +9,12 @@ module.exports = {
 
   queueWorkerEnabled: process.env.QUEUE_WORKER_ENABLED === 'true',
 
+  // Public origin used to build unsubscribe links in outgoing email. MUST be a
+  // real, internet-reachable URL in production — a localhost link in a sent
+  // email is a dead link, which hurts deliverability and blocks opt-outs.
+  publicBaseUrl:
+    process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 8080}`,
+
   sendMode: process.env.SEND_MODE || 'warmup',
 
   delays: {
