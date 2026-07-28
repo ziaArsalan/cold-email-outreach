@@ -17,4 +17,4 @@ credentials.json
 .playwright-mcp/
 
 # Client build output
-client/build/
+# client/build/
