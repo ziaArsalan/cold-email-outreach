@@ -298,6 +298,18 @@ export default function App() {
     total: 0,
   })
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set())
+  const [leadSearch, setLeadSearch] = useState('')
+  const [addLeadOpen, setAddLeadOpen] = useState(false)
+  const [addLeadBusy, setAddLeadBusy] = useState(false)
+  const emptyLead = {
+    firstName: '',
+    lastName: '',
+    email: '',
+    company: '',
+    title: '',
+    website: '',
+  }
+  const [addLeadForm, setAddLeadForm] = useState(emptyLead)
   // Bulk/all intro regeneration in flight (one AI call per lead — can be slow).
   const [regenBusy, setRegenBusy] = useState(false)
   const [newListForm, setNewListForm] = useState({ name: '', description: '' })
@@ -401,10 +413,12 @@ export default function App() {
     } catch (e) {}
   }
 
-  const fetchListLeads = async (id, page = 1) => {
+  const fetchListLeads = async (id, page = 1, q = leadSearch) => {
     try {
       const { data } = await axios.get(
-        `${API}/lists/${id}/leads?page=${page}&limit=25`,
+        `${API}/lists/${id}/leads?page=${page}&limit=25${
+          q ? `&q=${encodeURIComponent(q)}` : ''
+        }`,
       )
       setListLeads({
         items: data.items || [],
@@ -420,7 +434,42 @@ export default function App() {
     setOpenList(list)
     setImportSummary(null)
     setSheetImport({ sheetId: '', tab: '' })
-    fetchListLeads(list._id)
+    setLeadSearch('')
+    fetchListLeads(list._id, 1, '')
+  }
+
+  const submitLeadSearch = (e) => {
+    if (e) e.preventDefault()
+    if (openList) fetchListLeads(openList._id, 1, leadSearch)
+  }
+
+  const addLead = async (e) => {
+    if (e) e.preventDefault()
+    if (!openList) return
+    const email = addLeadForm.email.trim()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      alert('Please enter a valid email address.')
+      return
+    }
+    setAddLeadBusy(true)
+    try {
+      const { data } = await axios.post(
+        `${API}/lists/${openList._id}/leads`,
+        addLeadForm,
+      )
+      setAddLeadForm(emptyLead)
+      setAddLeadOpen(false)
+      setLeadSearch('')
+      await Promise.all([fetchListLeads(openList._id, 1, ''), fetchLists()])
+      if (data.moved)
+        alert('That email already existed — moved it into this list.')
+    } catch (err) {
+      alert(
+        'Failed to add lead: ' + (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setAddLeadBusy(false)
+    }
   }
 
   const closeListView = () => {
@@ -3042,6 +3091,137 @@ export default function App() {
               </button>
             </div>
 
+            {/* Toolbar: search + add lead */}
+            <div className='card'>
+              <div
+                className='bulk-actions'
+                style={{ alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <form
+                  onSubmit={submitLeadSearch}
+                  style={{
+                    display: 'flex',
+                    gap: '0.5rem',
+                    alignItems: 'center',
+                    flex: 1,
+                    maxWidth: 420,
+                  }}
+                >
+                  <input
+                    type='text'
+                    placeholder='Search name, email, or company…'
+                    value={leadSearch}
+                    onChange={(e) => setLeadSearch(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button className='btn-ghost' type='submit'>
+                    Search
+                  </button>
+                  {leadSearch && (
+                    <button
+                      className='btn-ghost'
+                      type='button'
+                      onClick={() => {
+                        setLeadSearch('')
+                        fetchListLeads(openList._id, 1, '')
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </form>
+                <button
+                  className='btn-start'
+                  onClick={() => setAddLeadOpen((v) => !v)}
+                >
+                  {addLeadOpen ? '× Cancel' : '+ Add Lead'}
+                </button>
+              </div>
+
+              {addLeadOpen && (
+                <form onSubmit={addLead} style={{ marginTop: '1rem' }}>
+                  <div className='settings-fields-grid'>
+                    <div className='control-group'>
+                      <label>First name</label>
+                      <input
+                        value={addLeadForm.firstName}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            firstName: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Last name</label>
+                      <input
+                        value={addLeadForm.lastName}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            lastName: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Email *</label>
+                      <input
+                        type='email'
+                        value={addLeadForm.email}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({ ...s, email: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Company</label>
+                      <input
+                        value={addLeadForm.company}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            company: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Title</label>
+                      <input
+                        value={addLeadForm.title}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({ ...s, title: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Website</label>
+                      <input
+                        value={addLeadForm.website}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            website: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '0.9rem' }}>
+                    <button
+                      className='btn-start'
+                      type='submit'
+                      disabled={addLeadBusy}
+                    >
+                      {addLeadBusy ? 'Adding…' : 'Add Lead'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
             {/* Import controls — real lists only */}
             {openList._id !== 'unassigned' && (
               <div className='card'>
@@ -3205,7 +3385,9 @@ export default function App() {
             <div className='card table-card'>
               {listLeads.items.length === 0 ? (
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
-                  No leads in this list.
+                  {leadSearch
+                    ? `No leads match "${leadSearch}".`
+                    : 'No leads in this list yet — use “+ Add Lead” or import a CSV.'}
                 </p>
               ) : (
                 <div className='table-wrapper'>

@@ -2024,6 +2024,18 @@ router.get('/lists/:id/leads', async (req, res) => {
         ? { listId: null }
         : { listId: req.params.id }
 
+    // Optional search across name / email / company (case-insensitive).
+    const q = (req.query.q || '').trim()
+    if (q) {
+      const rx = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+      filter.$or = [
+        { firstName: rx },
+        { lastName: rx },
+        { email: rx },
+        { company: rx },
+      ]
+    }
+
     const [docs, total] = await Promise.all([
       Lead.find(filter)
         .sort({ createdAt: -1 })
@@ -2036,6 +2048,63 @@ router.get('/lists/:id/leads', async (req, res) => {
 
     const pages = Math.max(1, Math.ceil(total / limit))
     res.json({ success: true, items: docs, total, page, pages })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/lists/:id/leads — manually add a single lead to a list. Dedupes by
+// email (an existing lead is moved into this list rather than duplicated).
+router.post('/lists/:id/leads', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const b = req.body || {}
+    const email = String(b.email || '').toLowerCase().trim()
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return res
+        .status(400)
+        .json({ success: false, error: 'A valid email is required' })
+
+    // 'unassigned' means no list; otherwise verify the list exists.
+    let listId = null
+    if (req.params.id !== 'unassigned') {
+      const list = await List.findById(req.params.id).lean()
+      if (!list)
+        return res.status(404).json({ success: false, error: 'List not found' })
+      listId = list._id
+    }
+
+    const fields = {
+      firstName: (b.firstName || '').trim(),
+      lastName: (b.lastName || '').trim(),
+      company: (b.company || '').trim(),
+      title: (b.title || '').trim(),
+      website: (b.website || '').trim(),
+      industry: (b.industry || '').trim(),
+      country: (b.country || '').trim(),
+      email,
+      listId,
+      source: 'manual',
+    }
+
+    const existing = await Lead.findOne({ email })
+    if (existing) {
+      // Move it into this list + fill any blank fields; keep its status/history.
+      Object.entries(fields).forEach(([k, v]) => {
+        if (k === 'email') return
+        if (k === 'listId' || v) existing[k] = v
+      })
+      await existing.save()
+      return res.json({ success: true, lead: existing, moved: true })
+    }
+
+    const lead = await Lead.create({ ...fields, status: 'new' })
+    res.json({ success: true, lead, moved: false })
   } catch (err) {
     if (err.name === 'CastError')
       return res.status(404).json({ success: false, error: 'List not found' })
