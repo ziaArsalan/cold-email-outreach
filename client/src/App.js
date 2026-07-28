@@ -299,6 +299,7 @@ export default function App() {
   })
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set())
   const [leadSearch, setLeadSearch] = useState('')
+  const [leadStatusFilter, setLeadStatusFilter] = useState('')
   const [addLeadOpen, setAddLeadOpen] = useState(false)
   const [addLeadBusy, setAddLeadBusy] = useState(false)
   const emptyLead = {
@@ -413,12 +414,17 @@ export default function App() {
     } catch (e) {}
   }
 
-  const fetchListLeads = async (id, page = 1, q = leadSearch) => {
+  const fetchListLeads = async (
+    id,
+    page = 1,
+    q = leadSearch,
+    status = leadStatusFilter,
+  ) => {
     try {
       const { data } = await axios.get(
         `${API}/lists/${id}/leads?page=${page}&limit=25${
           q ? `&q=${encodeURIComponent(q)}` : ''
-        }`,
+        }${status ? `&status=${encodeURIComponent(status)}` : ''}`,
       )
       setListLeads({
         items: data.items || [],
@@ -435,12 +441,18 @@ export default function App() {
     setImportSummary(null)
     setSheetImport({ sheetId: '', tab: '' })
     setLeadSearch('')
-    fetchListLeads(list._id, 1, '')
+    setLeadStatusFilter('')
+    fetchListLeads(list._id, 1, '', '')
   }
 
   const submitLeadSearch = (e) => {
     if (e) e.preventDefault()
-    if (openList) fetchListLeads(openList._id, 1, leadSearch)
+    if (openList) fetchListLeads(openList._id, 1, leadSearch, leadStatusFilter)
+  }
+
+  const changeStatusFilter = (status) => {
+    setLeadStatusFilter(status)
+    if (openList) fetchListLeads(openList._id, 1, leadSearch, status)
   }
 
   const addLead = async (e) => {
@@ -3289,19 +3301,41 @@ export default function App() {
                       type='button'
                       onClick={() => {
                         setLeadSearch('')
-                        fetchListLeads(openList._id, 1, '')
+                        fetchListLeads(openList._id, 1, '', leadStatusFilter)
                       }}
                     >
                       Clear
                     </button>
                   )}
                 </form>
-                <button
-                  className='btn-start'
-                  onClick={() => setAddLeadOpen((v) => !v)}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '0.75rem',
+                    alignItems: 'center',
+                  }}
                 >
-                  {addLeadOpen ? '× Cancel' : '+ Add Lead'}
-                </button>
+                  <select
+                    value={leadStatusFilter}
+                    onChange={(e) => changeStatusFilter(e.target.value)}
+                    title='Filter by status'
+                  >
+                    <option value=''>All statuses</option>
+                    <option value='new'>New</option>
+                    <option value='queued'>Queued</option>
+                    <option value='contacted'>Contacted</option>
+                    <option value='replied'>Replied</option>
+                    <option value='bounced'>Bounced</option>
+                    <option value='unsubscribed'>Unsubscribed</option>
+                    <option value='failed'>Failed</option>
+                  </select>
+                  <button
+                    className='btn-start'
+                    onClick={() => setAddLeadOpen((v) => !v)}
+                  >
+                    {addLeadOpen ? '× Cancel' : '+ Add Lead'}
+                  </button>
+                </div>
               </div>
 
               {/* Add-lead form */}
@@ -3397,8 +3431,8 @@ export default function App() {
 
               {listLeads.items.length === 0 ? (
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
-                  {leadSearch
-                    ? `No leads match "${leadSearch}".`
+                  {leadSearch || leadStatusFilter
+                    ? 'No leads match your filters.'
                     : 'No leads in this list yet — use “+ Add Lead” or import a CSV.'}
                 </p>
               ) : (

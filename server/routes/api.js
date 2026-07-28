@@ -2036,6 +2036,19 @@ router.get('/lists/:id/leads', async (req, res) => {
       ]
     }
 
+    // Optional status filter.
+    const LEAD_STATUSES = [
+      'new',
+      'queued',
+      'contacted',
+      'replied',
+      'bounced',
+      'unsubscribed',
+      'failed',
+    ]
+    const status = (req.query.status || '').trim()
+    if (status && LEAD_STATUSES.includes(status)) filter.status = status
+
     const [docs, total] = await Promise.all([
       Lead.find(filter)
         .sort({ createdAt: -1 })
