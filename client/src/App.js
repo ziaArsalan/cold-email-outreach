@@ -3091,45 +3091,12 @@ export default function App() {
               </button>
             </div>
 
-            {/* Toolbar: search + add lead */}
+            {/* Toolbar: add lead */}
             <div className='card'>
               <div
                 className='bulk-actions'
-                style={{ alignItems: 'center', justifyContent: 'space-between' }}
+                style={{ alignItems: 'center', justifyContent: 'flex-end' }}
               >
-                <form
-                  onSubmit={submitLeadSearch}
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    alignItems: 'center',
-                    flex: 1,
-                    maxWidth: 420,
-                  }}
-                >
-                  <input
-                    type='text'
-                    placeholder='Search name, email, or company…'
-                    value={leadSearch}
-                    onChange={(e) => setLeadSearch(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                  <button className='btn-ghost' type='submit'>
-                    Search
-                  </button>
-                  {leadSearch && (
-                    <button
-                      className='btn-ghost'
-                      type='button'
-                      onClick={() => {
-                        setLeadSearch('')
-                        fetchListLeads(openList._id, 1, '')
-                      }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </form>
                 <button
                   className='btn-start'
                   onClick={() => setAddLeadOpen((v) => !v)}
@@ -3383,6 +3350,41 @@ export default function App() {
 
             {/* Leads table */}
             <div className='card table-card'>
+              {/* Search — directly above the table */}
+              <form
+                onSubmit={submitLeadSearch}
+                style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  alignItems: 'center',
+                  marginBottom: '1rem',
+                  maxWidth: 460,
+                }}
+              >
+                <input
+                  type='text'
+                  placeholder='Search name, email, or company…'
+                  value={leadSearch}
+                  onChange={(e) => setLeadSearch(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button className='btn-ghost' type='submit'>
+                  Search
+                </button>
+                {leadSearch && (
+                  <button
+                    className='btn-ghost'
+                    type='button'
+                    onClick={() => {
+                      setLeadSearch('')
+                      fetchListLeads(openList._id, 1, '')
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </form>
+
               {listLeads.items.length === 0 ? (
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
                   {leadSearch
