@@ -61,14 +61,18 @@ const effectiveDailyCap = (mailbox) => {
 const isAvailable = async (mailbox) => {
   if (!mailbox.active) return false
 
-  // Auto-unpause when the pause window has elapsed.
+  // Auto-recover a paused OR errored mailbox once its cooldown elapses. A bare
+  // 'error' with no pausedUntil (a legacy state, or a one-off manual-test
+  // failure) is treated as recoverable now — if the underlying problem persists,
+  // the worker re-pauses it with proper exponential backoff. This is what keeps
+  // a transient SMTP timeout from permanently stalling the whole campaign.
   if (
-    mailbox.healthStatus === 'paused' &&
-    mailbox.pausedUntil &&
-    new Date() >= mailbox.pausedUntil
+    (mailbox.healthStatus === 'paused' || mailbox.healthStatus === 'error') &&
+    (!mailbox.pausedUntil || new Date() >= mailbox.pausedUntil)
   ) {
     mailbox.healthStatus = 'healthy'
     mailbox.pausedUntil = undefined
+    mailbox.lastError = undefined
     await mailbox.save()
   }
 

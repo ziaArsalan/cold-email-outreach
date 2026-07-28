@@ -904,17 +904,20 @@ export default function App() {
 
   const toggleMailboxPause = async (mb) => {
     setMailboxBusy(true)
+    // Treat both 'paused' AND 'error' as "needs reactivation" — /resume clears
+    // either. Otherwise an errored mailbox has no way back from the UI.
+    const needsReactivate =
+      mb.healthStatus === 'paused' || mb.healthStatus === 'error'
     try {
-      const paused = mb.healthStatus === 'paused'
-      const action = paused ? 'resume' : 'pause'
+      const action = needsReactivate ? 'resume' : 'pause'
       // Manual pause defaults to 24h (vs. the short rate-limit backoff the
       // worker itself uses) so it doesn't silently resume mid-review.
-      const body = paused ? {} : { minutes: 1440, reason: 'manual pause' }
+      const body = needsReactivate ? {} : { minutes: 1440, reason: 'manual pause' }
       await axios.post(`${API}/mailboxes/${mb._id}/${action}`, body)
       await Promise.all([fetchMailboxes(), fetchDashboardAll()])
     } catch (err) {
       alert(
-        `Failed to ${mb.healthStatus === 'paused' ? 'resume' : 'pause'} mailbox: ` +
+        `Failed to ${needsReactivate ? 'reactivate' : 'pause'} mailbox: ` +
           (err.response?.data?.error || err.message),
       )
     } finally {
@@ -1957,12 +1960,18 @@ export default function App() {
                                 Edit
                               </button>
                               <button
-                                className='btn-ghost'
+                                className={
+                                  mb.healthStatus === 'paused' ||
+                                  mb.healthStatus === 'error'
+                                    ? 'btn-start'
+                                    : 'btn-ghost'
+                                }
                                 disabled={mailboxBusy}
                                 onClick={() => toggleMailboxPause(mb)}
                               >
-                                {mb.healthStatus === 'paused'
-                                  ? 'Resume'
+                                {mb.healthStatus === 'paused' ||
+                                mb.healthStatus === 'error'
+                                  ? '⚡ Reactivate'
                                   : 'Pause'}
                               </button>
                             </div>
@@ -2170,6 +2179,42 @@ export default function App() {
               <p>Launch and control AI-personalized outreach</p>
             </div>
 
+            {/* How it works — plain-language flow */}
+            <div className='card legend-card'>
+              <div className='legend-flow'>
+                <span className='legend-step'>
+                  1 · <strong>Start</strong> → all target leads join the queue
+                </span>
+                <span className='legend-arrow'>→</span>
+                <span className='legend-step'>
+                  2 · Emails send <strong>one at a time</strong>, every few
+                  minutes
+                </span>
+                <span className='legend-arrow'>→</span>
+                <span className='legend-step'>
+                  3 · Stops at the <strong>daily limit</strong>, resumes next day
+                </span>
+              </div>
+              <div className='legend-statuses'>
+                <span>
+                  <span className='status-badge badge-draft'>draft</span> not
+                  started
+                </span>
+                <span>
+                  <span className='status-badge badge-running'>running</span>{' '}
+                  actively sending
+                </span>
+                <span>
+                  <span className='status-badge badge-paused'>paused</span>{' '}
+                  temporarily halted
+                </span>
+                <span>
+                  <span className='status-badge badge-completed'>completed</span>{' '}
+                  all sent
+                </span>
+              </div>
+            </div>
+
             {/* Existing campaigns */}
             <div className='card'>
               <div
@@ -2192,6 +2237,16 @@ export default function App() {
                 <div className='campaign-list'>
                   {campaigns.map((c) => {
                     const counts = c.counts || {}
+                    const sent = counts.sent || 0
+                    const pending =
+                      (counts.pending || 0) +
+                      (counts.scheduled || 0) +
+                      (counts.sending || 0)
+                    const failed =
+                      (counts.failed || 0) + (counts.bounced || 0)
+                    const cancelled = counts.cancelled || 0
+                    const total = sent + pending + failed + cancelled
+                    const pct = total ? Math.round((sent / total) * 100) : 0
                     return (
                       <div key={c._id} className='campaign-row'>
                         <div className='campaign-main'>
@@ -2200,13 +2255,44 @@ export default function App() {
                             <span className={`status-badge badge-${c.status}`}>
                               {c.status}
                             </span>
+                            {c.status === 'running' && pending > 0 && (
+                              <span className='field-note'>
+                                sending…{' '}
+                                {c.warmupEnabled
+                                  ? 'warm-up pace'
+                                  : 'one every few min'}
+                              </span>
+                            )}
                           </div>
+
+                          {/* Progress: sent vs total targeted */}
+                          <div className='campaign-progress'>
+                            <div className='progress-bar'>
+                              <div
+                                className='progress-fill'
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className='progress-label'>
+                              {sent} of {total} sent ({pct}%)
+                            </span>
+                          </div>
+
                           <div className='campaign-meta'>
                             <span>{c.stepCount || 1} step(s)</span>
                             {c.listName && <span>List: {c.listName}</span>}
-                            <span>pending {counts.pending || 0}</span>
-                            <span>sent {counts.sent || 0}</span>
-                            <span>cancelled {counts.cancelled || 0}</span>
+                            <span className='chip chip-pending'>
+                              {pending} waiting
+                            </span>
+                            <span className='chip chip-sent'>{sent} sent</span>
+                            {failed > 0 && (
+                              <span className='chip chip-failed'>
+                                {failed} failed
+                              </span>
+                            )}
+                            {cancelled > 0 && (
+                              <span className='chip'>{cancelled} stopped</span>
+                            )}
                             <span>limit {c.dailyLimit || 0}/day</span>
                             <span>
                               warm-up {c.warmupEnabled ? 'on' : 'off'}
@@ -3067,6 +3153,42 @@ export default function App() {
                     ? 'Regenerating…'
                     : `↻ Regenerate selected (${selectedLeadIds.size})`}
                 </button>
+              </div>
+            </div>
+
+            {/* Lead status legend */}
+            <div className='card legend-card'>
+              <div className='legend-statuses'>
+                <span>
+                  <span className='status-badge badge-new'>new</span> not yet
+                  emailed
+                </span>
+                <span>
+                  <span className='status-badge badge-queued'>queued</span>{' '}
+                  waiting in the send queue
+                </span>
+                <span>
+                  <span className='status-badge badge-contacted'>contacted</span>{' '}
+                  email sent
+                </span>
+                <span>
+                  <span className='status-badge badge-replied'>replied</span>{' '}
+                  they responded (sequence stops)
+                </span>
+                <span>
+                  <span className='status-badge badge-bounced'>bounced</span>{' '}
+                  address rejected it
+                </span>
+                <span>
+                  <span className='status-badge badge-unsubscribed'>
+                    unsubscribed
+                  </span>{' '}
+                  opted out
+                </span>
+                <span>
+                  <span className='status-badge badge-failed'>failed</span>{' '}
+                  invalid / couldn't send
+                </span>
               </div>
             </div>
 
