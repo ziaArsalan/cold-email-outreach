@@ -15,11 +15,13 @@ const HEADER_MAP = {
   lastname: 'lastName',
   last_name: 'lastName',
   company: 'company',
+  'company name': 'company', // Apollo export header
   business: 'company',
   website: 'website',
   url: 'website',
   industry: 'industry',
   country: 'country',
+  title: 'title', // Apollo export header
 }
 
 // Map one header-keyed row object to a Lead field object, or null when it has

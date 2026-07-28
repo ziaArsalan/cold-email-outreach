@@ -25,7 +25,11 @@ const app = express()
 const PORT = process.env.PORT || 5000
 
 app.use(cors())
-app.use(express.json())
+// CSV imports POST the whole file as a JSON string ({ csv: "..." }); Apollo
+// exports with their huge keyword/technology columns easily exceed the default
+// 100kb body limit, so allow a generous ceiling.
+app.use(express.json({ limit: '25mb' }))
+app.use(express.urlencoded({ extended: true, limit: '25mb' }))
 
 app.use('/api', apiRoutes)
 

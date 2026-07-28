@@ -5,6 +5,7 @@ const leadSchema = new mongoose.Schema(
     firstName: String,
     lastName: String,
     company: String,
+    title: String,
     email: {
       type: String,
       required: true,
