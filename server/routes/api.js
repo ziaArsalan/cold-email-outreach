@@ -2043,6 +2043,27 @@ router.get('/lists/:id/leads', async (req, res) => {
   }
 })
 
+// GET /api/lists/:id/lead-ids — every lead _id in a list ('unassigned' = no
+// list). Lets the UI "select all" across pages without loading full docs.
+router.get('/lists/:id/lead-ids', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const filter =
+      req.params.id === 'unassigned'
+        ? { listId: null }
+        : { listId: req.params.id }
+    const docs = await Lead.find(filter).select('_id').lean()
+    res.json({ success: true, ids: docs.map((d) => String(d._id)) })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // Bump a list's source after an import: manual → the import's source; an
 // existing different non-manual source → 'mixed'.
 const bumpListSource = async (id, source) => {

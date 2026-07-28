@@ -281,9 +281,13 @@ export default function App() {
   const [leads, setLeads] = useState([])
   // Lead lists (T-017)
   const [lists, setLists] = useState([])
-  const [unassignedCount, setUnassignedCount] = useState(0)
   const [openList, setOpenList] = useState(null)
-  const [listLeads, setListLeads] = useState({ items: [], page: 1, pages: 1 })
+  const [listLeads, setListLeads] = useState({
+    items: [],
+    page: 1,
+    pages: 1,
+    total: 0,
+  })
   const [selectedLeadIds, setSelectedLeadIds] = useState(new Set())
   // Bulk/all intro regeneration in flight (one AI call per lead — can be slow).
   const [regenBusy, setRegenBusy] = useState(false)
@@ -385,7 +389,6 @@ export default function App() {
     try {
       const { data } = await axios.get(`${API}/lists`)
       setLists(data.lists || [])
-      setUnassignedCount(data.unassignedCount || 0)
     } catch (e) {}
   }
 
@@ -398,6 +401,7 @@ export default function App() {
         items: data.items || [],
         page: data.page || 1,
         pages: data.pages || 1,
+        total: data.total || 0,
       })
       setSelectedLeadIds(new Set())
     } catch (e) {}
@@ -456,6 +460,32 @@ export default function App() {
       return next
     })
   }
+
+  // Toggle every lead on the current page (header checkbox).
+  const pageLeadIds = listLeads.items.map((l) => l._id)
+  const allPageSelected =
+    pageLeadIds.length > 0 && pageLeadIds.every((id) => selectedLeadIds.has(id))
+  const toggleSelectPage = () => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev)
+      if (allPageSelected) pageLeadIds.forEach((id) => next.delete(id))
+      else pageLeadIds.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  // Select every lead in the whole list (across all pages).
+  const selectAllInList = async () => {
+    if (!openList) return
+    try {
+      const { data } = await axios.get(
+        `${API}/lists/${openList._id}/lead-ids`,
+      )
+      setSelectedLeadIds(new Set(data.ids || []))
+    } catch (e) {}
+  }
+
+  const clearSelection = () => setSelectedLeadIds(new Set())
 
   const assignSelected = async () => {
     if (!assignTarget || selectedLeadIds.size === 0) return
@@ -2856,25 +2886,6 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td>Unassigned</td>
-                      <td>—</td>
-                      <td>{unassignedCount}</td>
-                      <td>—</td>
-                      <td>
-                        <button
-                          className='btn-ghost'
-                          onClick={() =>
-                            openListView({
-                              _id: 'unassigned',
-                              name: 'Unassigned',
-                            })
-                          }
-                        >
-                          Open
-                        </button>
-                      </td>
-                    </tr>
                     {lists.map((l) => (
                       <tr key={l._id}>
                         <td>{l.name}</td>
@@ -2922,7 +2933,11 @@ export default function App() {
                 ← Back
               </button>
               <h1>{openList.name}</h1>
-              <p>{listLeads.items.length} shown on this page</p>
+              <p>
+                <strong>{listLeads.total}</strong> lead
+                {listLeads.total === 1 ? '' : 's'} total ·{' '}
+                {listLeads.items.length} shown on this page
+              </p>
               <button
                 className='btn-ghost'
                 onClick={() => regenerateListIntros(false)}
@@ -3003,8 +3018,25 @@ export default function App() {
             <div className='card'>
               <div className='bulk-actions' style={{ alignItems: 'center' }}>
                 <span className='field-note'>
-                  {selectedLeadIds.size} selected
+                  {selectedLeadIds.size} of {listLeads.total} selected
                 </span>
+                <button
+                  className='btn-ghost'
+                  onClick={selectAllInList}
+                  disabled={
+                    listLeads.total === 0 ||
+                    selectedLeadIds.size === listLeads.total
+                  }
+                >
+                  Select all {listLeads.total}
+                </button>
+                <button
+                  className='btn-ghost'
+                  onClick={clearSelection}
+                  disabled={selectedLeadIds.size === 0}
+                >
+                  Clear
+                </button>
                 <span className='field-note'>Assign selected to</span>
                 <select
                   value={assignTarget}
@@ -3049,7 +3081,14 @@ export default function App() {
                   <table>
                     <thead>
                       <tr>
-                        <th></th>
+                        <th>
+                          <input
+                            type='checkbox'
+                            checked={allPageSelected}
+                            onChange={toggleSelectPage}
+                            title='Select all on this page'
+                          />
+                        </th>
                         <th>Name</th>
                         <th>Email</th>
                         <th>Company</th>
@@ -4178,7 +4217,6 @@ export default function App() {
                 }
               >
                 <option value=''>Select a list…</option>
-                <option value='unassigned'>Unassigned</option>
                 {lists.map((l) => (
                   <option key={l._id} value={l._id}>
                     {l.name} ({l.leadCount} leads)
