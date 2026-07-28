@@ -1,5 +1,7 @@
 require('dotenv').config()
 const express = require('express')
+const path = require('path')
+const fs = require('fs')
 const cors = require('cors')
 const cron = require('node-cron')
 const apiRoutes = require('./routes/api')
@@ -36,6 +38,24 @@ app.use('/api', apiRoutes)
 app.get('/health', (req, res) =>
   res.json({ status: 'ok', time: new Date().toISOString() }),
 )
+
+// In production, serve the built React app from the same server so the frontend
+// and API share an origin (client then calls a relative /api — no hardcoded
+// host). Any non-API GET falls back to index.html for client-side routing.
+const clientBuild = path.join(__dirname, '..', 'client', 'build')
+if (fs.existsSync(path.join(clientBuild, 'index.html'))) {
+  app.use(express.static(clientBuild))
+  app.use((req, res, next) => {
+    if (req.method !== 'GET') return next()
+    if (req.path.startsWith('/api') || req.path === '/health') return next()
+    res.sendFile(path.join(clientBuild, 'index.html'))
+  })
+  console.log('[static] serving client build from', clientBuild)
+} else {
+  console.log(
+    '[static] no client build found — API only. Build it with: cd client && npm run build',
+  )
+}
 
 app.listen(PORT, () => {
   console.log(`Devtronics Outreach Server running on port ${PORT}`)

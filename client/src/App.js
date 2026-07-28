@@ -2,7 +2,16 @@ import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import './App.css'
 
-const API = 'http://localhost:8080/api'
+// API base:
+// - explicit override wins (REACT_APP_API_URL, set at build time), else
+// - in production the frontend is served by the same server as the API, so use
+//   a same-origin relative path, else
+// - local dev hits the dev server on :8080.
+const isLocalHost =
+  typeof window !== 'undefined' &&
+  /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)
+const API =
+  process.env.REACT_APP_API_URL || (isLocalHost ? 'http://localhost:8080/api' : '/api')
 
 // Restore token on page load
 const _savedToken = localStorage.getItem('token')
