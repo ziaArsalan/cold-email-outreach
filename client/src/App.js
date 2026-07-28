@@ -3091,104 +3091,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* Toolbar: add lead */}
-            <div className='card'>
-              <div
-                className='bulk-actions'
-                style={{ alignItems: 'center', justifyContent: 'flex-end' }}
-              >
-                <button
-                  className='btn-start'
-                  onClick={() => setAddLeadOpen((v) => !v)}
-                >
-                  {addLeadOpen ? '× Cancel' : '+ Add Lead'}
-                </button>
-              </div>
-
-              {addLeadOpen && (
-                <form onSubmit={addLead} style={{ marginTop: '1rem' }}>
-                  <div className='settings-fields-grid'>
-                    <div className='control-group'>
-                      <label>First name</label>
-                      <input
-                        value={addLeadForm.firstName}
-                        onChange={(e) =>
-                          setAddLeadForm((s) => ({
-                            ...s,
-                            firstName: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className='control-group'>
-                      <label>Last name</label>
-                      <input
-                        value={addLeadForm.lastName}
-                        onChange={(e) =>
-                          setAddLeadForm((s) => ({
-                            ...s,
-                            lastName: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className='control-group'>
-                      <label>Email *</label>
-                      <input
-                        type='email'
-                        value={addLeadForm.email}
-                        onChange={(e) =>
-                          setAddLeadForm((s) => ({ ...s, email: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className='control-group'>
-                      <label>Company</label>
-                      <input
-                        value={addLeadForm.company}
-                        onChange={(e) =>
-                          setAddLeadForm((s) => ({
-                            ...s,
-                            company: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className='control-group'>
-                      <label>Title</label>
-                      <input
-                        value={addLeadForm.title}
-                        onChange={(e) =>
-                          setAddLeadForm((s) => ({ ...s, title: e.target.value }))
-                        }
-                      />
-                    </div>
-                    <div className='control-group'>
-                      <label>Website</label>
-                      <input
-                        value={addLeadForm.website}
-                        onChange={(e) =>
-                          setAddLeadForm((s) => ({
-                            ...s,
-                            website: e.target.value,
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                  <div style={{ marginTop: '0.9rem' }}>
-                    <button
-                      className='btn-start'
-                      type='submit'
-                      disabled={addLeadBusy}
-                    >
-                      {addLeadBusy ? 'Adding…' : 'Add Lead'}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-
             {/* Import controls — real lists only */}
             {openList._id !== 'unassigned' && (
               <div className='card'>
@@ -3350,40 +3252,148 @@ export default function App() {
 
             {/* Leads table */}
             <div className='card table-card'>
-              {/* Search — directly above the table */}
-              <form
-                onSubmit={submitLeadSearch}
+              {/* Search + Add Lead — directly above the table */}
+              <div
                 style={{
                   display: 'flex',
-                  gap: '0.5rem',
+                  gap: '0.75rem',
                   alignItems: 'center',
+                  justifyContent: 'space-between',
                   marginBottom: '1rem',
-                  maxWidth: 460,
+                  flexWrap: 'wrap',
                 }}
               >
-                <input
-                  type='text'
-                  placeholder='Search name, email, or company…'
-                  value={leadSearch}
-                  onChange={(e) => setLeadSearch(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <button className='btn-ghost' type='submit'>
-                  Search
-                </button>
-                {leadSearch && (
-                  <button
-                    className='btn-ghost'
-                    type='button'
-                    onClick={() => {
-                      setLeadSearch('')
-                      fetchListLeads(openList._id, 1, '')
-                    }}
-                  >
-                    Clear
+                <form
+                  onSubmit={submitLeadSearch}
+                  style={{
+                    display: 'flex',
+                    gap: '0.5rem',
+                    alignItems: 'center',
+                    flex: 1,
+                    maxWidth: 460,
+                  }}
+                >
+                  <input
+                    type='text'
+                    placeholder='Search name, email, or company…'
+                    value={leadSearch}
+                    onChange={(e) => setLeadSearch(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button className='btn-ghost' type='submit'>
+                    Search
                   </button>
-                )}
-              </form>
+                  {leadSearch && (
+                    <button
+                      className='btn-ghost'
+                      type='button'
+                      onClick={() => {
+                        setLeadSearch('')
+                        fetchListLeads(openList._id, 1, '')
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </form>
+                <button
+                  className='btn-start'
+                  onClick={() => setAddLeadOpen((v) => !v)}
+                >
+                  {addLeadOpen ? '× Cancel' : '+ Add Lead'}
+                </button>
+              </div>
+
+              {/* Add-lead form */}
+              {addLeadOpen && (
+                <form
+                  onSubmit={addLead}
+                  style={{
+                    marginBottom: '1rem',
+                    paddingBottom: '1rem',
+                    borderBottom: '1px solid var(--border)',
+                  }}
+                >
+                  <div className='settings-fields-grid'>
+                    <div className='control-group'>
+                      <label>First name</label>
+                      <input
+                        value={addLeadForm.firstName}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            firstName: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Last name</label>
+                      <input
+                        value={addLeadForm.lastName}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            lastName: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Email *</label>
+                      <input
+                        type='email'
+                        value={addLeadForm.email}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({ ...s, email: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Company</label>
+                      <input
+                        value={addLeadForm.company}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            company: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Title</label>
+                      <input
+                        value={addLeadForm.title}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({ ...s, title: e.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className='control-group'>
+                      <label>Website</label>
+                      <input
+                        value={addLeadForm.website}
+                        onChange={(e) =>
+                          setAddLeadForm((s) => ({
+                            ...s,
+                            website: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '0.9rem' }}>
+                    <button
+                      className='btn-start'
+                      type='submit'
+                      disabled={addLeadBusy}
+                    >
+                      {addLeadBusy ? 'Adding…' : 'Add Lead'}
+                    </button>
+                  </div>
+                </form>
+              )}
 
               {listLeads.items.length === 0 ? (
                 <p style={{ color: 'var(--muted)', fontSize: '13px' }}>
