@@ -42,7 +42,10 @@ module.exports = {
   // Real deploys leave this at 1 day; tests shrink it so follow-ups fire fast.
   followupDelayUnitMs: Number(process.env.FOLLOWUP_DELAY_UNIT_MS) || 86400000,
 
-  smtpTimeoutMs: Number(process.env.SMTP_TIMEOUT_MS) || 30000,
+  // 60s (was 30s): normal connects to the SMTP host take ~2s, so a timeout only
+  // fires on a real network spike/drop. The extra headroom lets a briefly-slow
+  // connection succeed instead of being failed + retried. Override via env.
+  smtpTimeoutMs: Number(process.env.SMTP_TIMEOUT_MS) || 60000,
   workerTickGuardMs: Number(process.env.WORKER_TICK_GUARD_MS) || 5000,
   workerIdleMs: Number(process.env.WORKER_IDLE_MS) || 30000,
 
