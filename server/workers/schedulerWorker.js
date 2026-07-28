@@ -245,15 +245,22 @@ const processOne = async (deps = {}) => {
         await log('warn', 'rotation', `mailbox paused (rate-limit): ${err.message}`, refs)
         await log('warn', 'retry', `rescheduled after rate-limit in ${backoff}ms`, refs)
       } else if (category === 'auth-or-connection') {
-        mailbox.healthStatus = 'error'
-        mailbox.lastError = err.message
-        await mailbox.save()
+        // Pause with an auto-recovering window instead of a permanent 'error'
+        // dead-end. A transient SMTP hiccup (e.g. "Connection timeout") must not
+        // stall the whole campaign forever — the mailbox un-pauses itself after
+        // the window and the item retries.
+        const backoff = config.retry.backoffBaseMs * 2 ** Math.min(item.retries, 4)
+        await mailboxService.pause(
+          mailbox._id,
+          new Date(Date.now() + backoff),
+          `connection error: ${err.message}`,
+        )
         await reschedule(item, {
-          delayMs: config.retry.backoffBaseMs,
+          delayMs: backoff,
           retriesIncrement: 0,
           errorMessage: err.message,
         })
-        await log('error', 'error', `auth/connection error: ${err.message}`, refs)
+        await log('warn', 'rotation', `mailbox paused (connection error): ${err.message}`, refs)
       } else if (category === 'permanent') {
         await markBounced(item, {
           errorMessage: err.message,
