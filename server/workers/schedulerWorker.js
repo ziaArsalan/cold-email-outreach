@@ -11,6 +11,7 @@ const settingsService = require('../services/settingsService')
 const unsubscribeService = require('../services/unsubscribeService')
 const {
   claimNext,
+  recoverStuckSending,
   markSent,
   markFailed,
   markBounced,
@@ -303,6 +304,14 @@ const start = (deps) => {
   if (started) return
   started = true
   console.log('[queueWorker] started — gating live via settings')
+
+  // Recover any email stranded in 'sending' by a previous crash/shutdown, so a
+  // restart never silently drops it. Fire-and-forget — must not block the loop.
+  recoverStuckSending(config.staleSendingMs)
+    .then((n) => {
+      if (n) console.log(`[queueWorker] recovered ${n} stranded 'sending' item(s)`)
+    })
+    .catch((e) => console.warn('[queueWorker] stuck-sending recovery failed:', e.message))
 
   const tick = async () => {
     const s = settingsService.get()

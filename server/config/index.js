@@ -33,6 +33,11 @@ module.exports = {
     backoffBaseMs: 60000,
   },
 
+  // On worker startup, any item still 'sending' this long is treated as stranded
+  // by a crashed/killed process (e.g. laptop shut mid-send) and reclaimed to
+  // 'pending'. The margin avoids stealing an item another worker is mid-send on.
+  staleSendingMs: Number(process.env.QUEUE_STALE_SENDING_MS) || 300000,
+
   // Milliseconds per follow-up "day" — the multiplier for a step's delayDays.
   // Real deploys leave this at 1 day; tests shrink it so follow-ups fire fast.
   followupDelayUnitMs: Number(process.env.FOLLOWUP_DELAY_UNIT_MS) || 86400000,

@@ -48,6 +48,19 @@ const claimNext = async (now = new Date()) => {
   )
 }
 
+// Reclaim items stranded in 'sending' by a previous process that died mid-send
+// (e.g. the laptop was shut off). Only touches items untouched for `staleMs`, so
+// it never steals one a live worker is actively sending. Resets them to 'pending'
+// and due-now. Returns how many were recovered. Call once at worker startup.
+const recoverStuckSending = async (staleMs) => {
+  const cutoff = new Date(Date.now() - staleMs)
+  const res = await QueuedEmail.updateMany(
+    { status: 'sending', updatedAt: { $lte: cutoff } },
+    { $set: { status: 'pending', scheduledAt: null } },
+  )
+  return res.modifiedCount || 0
+}
+
 const markSent = async (item, smtpResponse) => {
   item.status = 'sent'
   item.sentAt = new Date()
@@ -128,6 +141,7 @@ const classifySendError = (err) => {
 module.exports = {
   enqueue,
   claimNext,
+  recoverStuckSending,
   markSent,
   reschedule,
   markFailed,
