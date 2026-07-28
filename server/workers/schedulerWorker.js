@@ -124,15 +124,38 @@ const processOne = async (deps = {}) => {
 
     const provider = providerFor(mailbox)
 
+    // Build the email content NOW (lazy, one email at a time): generate the AI
+    // intro if the lead lacks one, then render the step fresh. If the AI is
+    // temporarily unavailable (e.g. "model experiencing high demand"), defer
+    // this single email and retry later WITHOUT burning a retry — a transient
+    // outage must not fail the send or the campaign.
+    let content = { subject: item.subject, body: item.body }
+    if (campaign) {
+      try {
+        content = await campaignService.prepareSendContent(campaign, lead, item)
+      } catch (err) {
+        await reschedule(item, {
+          delayMs: config.retry.backoffBaseMs * 2 ** Math.min(item.retries, 4),
+          retriesIncrement: 0,
+          errorMessage: err.message,
+        })
+        await log('warn', 'ai', `deferred — content not ready: ${err.message}`, {
+          queueId: item._id,
+          campaignId: item.campaignId,
+        })
+        return { requeued: true }
+      }
+    }
+
     // Append the opt-out footer + one-click List-Unsubscribe headers at SEND
     // time, so every email (including per-lead body overrides and follow-up
     // steps) carries them without spending the template's one-link budget.
-    const bodyWithFooter = item.body + unsubscribeService.footerFor(lead._id)
+    const bodyWithFooter = content.body + unsubscribeService.footerFor(lead._id)
 
     try {
       const info = await provider.send({
         to,
-        subject: item.subject,
+        subject: content.subject,
         text: bodyWithFooter,
         html:
           campaign && campaign.htmlEnabled

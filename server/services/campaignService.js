@@ -41,7 +41,9 @@ const normalizeSteps = (campaign) => {
 
 // Render + enqueue one step for a lead. Reuses the lead's cached aiIntro (no AI
 // call here — step 0's start() already primes it). scheduledAt null = immediate.
-const enqueueStepForLead = async (campaign, lead, stepIndex, scheduledAt) => {
+// Render one step's subject/body for a lead from the step template + the lead's
+// (possibly cached) aiIntro. Pure of AI calls — see ensureIntro for that.
+const renderStep = async (campaign, lead, stepIndex) => {
   const step = normalizeSteps(campaign)[stepIndex]
   const template = await Template.findById(step.templateId)
   if (!template) throw badRequest(`Step ${stepIndex + 1} template not found`)
@@ -71,6 +73,40 @@ const enqueueStepForLead = async (campaign, lead, stepIndex, scheduledAt) => {
     subject = lead.subjectOverride || renderedSubject
   }
 
+  return { subject, body }
+}
+
+// Whether the initial email should skip AI entirely (a manual per-lead override).
+const hasManualOverride = (lead, stepIndex) =>
+  stepIndex === 0 &&
+  typeof lead.bodyOverride === 'string' &&
+  lead.bodyOverride.trim().length > 0
+
+// Generate + cache the lead's AI intro if it doesn't have one. Throws on AI
+// failure so the caller (the worker) can retry the single email later, instead
+// of a failure taking down a whole campaign start. No-op once cached.
+const ensureIntro = async (lead, campaign) => {
+  if (lead.aiIntro && lead.aiIntro.trim()) return
+  const { intro, subject } = await generateIntro(lead, campaign && campaign.aiPrompt)
+  lead.aiIntro = intro
+  if (!lead.aiSubject) lead.aiSubject = subject
+  await lead.save()
+}
+
+// Build the email a queue item should send, AT SEND TIME. Generates the AI intro
+// lazily (one email at a time) then renders the step fresh. This is why campaign
+// start is instant and never fails on a transient AI outage — the AI work is
+// spread across the drain, not done in a burst up front.
+const prepareSendContent = async (campaign, lead, item) => {
+  const stepIndex = item.stepIndex || 0
+  if (!hasManualOverride(lead, stepIndex)) await ensureIntro(lead, campaign)
+  return renderStep(campaign, lead, stepIndex)
+}
+
+const enqueueStepForLead = async (campaign, lead, stepIndex, scheduledAt) => {
+  // Store a best-effort rendering now (the live-queue preview); the worker
+  // re-renders with a freshly generated intro at send time.
+  const { subject, body } = await renderStep(campaign, lead, stepIndex)
   return enqueue({
     campaignId: campaign._id,
     leadId: lead._id,
@@ -196,27 +232,13 @@ const enqueueBatch = async (campaign, leadIds) => {
       { campaignId: campaign._id },
     )
 
-  const missingIntros = leads.filter((l) => !(l.aiIntro && l.aiIntro.trim()))
-  if (missingIntros.length > 10)
-    await log(
-      'warn',
-      'campaign',
-      `starting campaign ${campaign._id}: ${missingIntros.length} leads need AI intros (will generate on enqueue)`,
-      { campaignId: campaign._id },
-    )
-
   let enqueued = 0
   for (const lead of leads) {
-    // Same cache semantics as /leads/:id/preview — only call AI when blank.
-    if (!(lead.aiIntro && lead.aiIntro.trim())) {
-      const { intro, subject } = await generateIntro(lead, campaign.aiPrompt)
-      lead.aiIntro = intro
-      if (!lead.aiSubject) lead.aiSubject = subject
-      await lead.save()
-    }
-
-    // Enqueue only step 0 now; the worker schedules each follow-up after the
-    // prior step actually sends (so delays run from real send times).
+    // NO AI here. The intro is generated lazily at SEND time (worker,
+    // prepareSendContent) — one email at a time — so start is instant and a
+    // transient AI outage (e.g. "model experiencing high demand") never fails
+    // the whole campaign start. Enqueue only step 0; the worker schedules each
+    // follow-up after the prior step actually sends.
     await enqueueStepForLead(campaign, lead, 0, null)
 
     lead.status = 'queued'
@@ -397,6 +419,7 @@ const leadCountsByStatus = async () => {
 module.exports = {
   normalizeSteps,
   enqueueStepForLead,
+  prepareSendContent,
   targetLeads,
   start,
   pause,
