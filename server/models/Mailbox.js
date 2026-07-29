@@ -7,7 +7,7 @@ const mailboxSchema = new mongoose.Schema(
     email: String,
     provider: {
       type: String,
-      enum: ['smtp', 'gmail', 'm365', 'mailgun', 'ses', 'resend'],
+      enum: ['smtp', 'brevo', 'gmail', 'm365', 'mailgun', 'ses', 'resend'],
       default: 'smtp',
     },
     host: String,
@@ -15,6 +15,8 @@ const mailboxSchema = new mongoose.Schema(
     secure: Boolean,
     username: String,
     password: { type: String, select: false },
+    // For HTTP-API providers (e.g. Brevo). Falls back to an env key when unset.
+    apiKey: { type: String, select: false },
     dailyLimit: { type: Number, default: config.defaults.dailyLimit },
     hourlyLimit: { type: Number, default: config.defaults.hourlyLimit },
     sentToday: { type: Number, default: 0 },

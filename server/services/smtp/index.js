@@ -1,4 +1,5 @@
 const NodemailerProvider = require('./NodemailerProvider')
+const BrevoApiProvider = require('./BrevoApiProvider')
 
 /**
  * @typedef {Object} MailPayload
@@ -24,6 +25,8 @@ const providerFor = (mailbox) => {
     case 'smtp':
     case undefined:
       return new NodemailerProvider(mailbox)
+    case 'brevo':
+      return new BrevoApiProvider(mailbox)
     default:
       throw new Error(
         `Provider '${mailbox.provider}' not implemented yet`,

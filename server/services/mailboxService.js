@@ -91,7 +91,7 @@ const isAvailable = async (mailbox) => {
 const pickNext = async (mailboxIds) => {
   const mailboxes = await Mailbox.find({
     _id: { $in: mailboxIds },
-  }).select('+password')
+  }).select('+password +apiKey')
 
   const available = []
   for (const mb of mailboxes) {
