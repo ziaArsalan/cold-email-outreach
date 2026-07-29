@@ -1778,89 +1778,9 @@ export default function App() {
               </div>
             </div>
 
-            {/* Live queue activity — sending now / next up / recently sent */}
-            <div className='card'>
-              <div
-                className='bulk-actions'
-                style={{
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <h2 style={{ margin: 0 }}>Queue Activity</h2>
-                <button className='btn-ghost' onClick={fetchQueueActivity}>
-                  ↻ Refresh
-                </button>
-              </div>
-              <div className='queue-activity'>
-                <div className='qa-col'>
-                  <div className='qa-head qa-head-sending'>
-                    ● Sending now ({queueActivity.sending.length})
-                  </div>
-                  {queueActivity.sending.length === 0 ? (
-                    <div className='qa-empty'>Idle — nothing sending</div>
-                  ) : (
-                    queueActivity.sending.map((it) => (
-                      <div key={it._id} className='qa-item'>
-                        <span className='qa-email'>{it.leadEmail || '—'}</span>
-                        <span className='qa-sub'>
-                          {it.campaignName || 'campaign'} · step{' '}
-                          {(it.stepIndex || 0) + 1}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className='qa-col'>
-                  <div className='qa-head qa-head-next'>
-                    → Next up ({queueActivity.next.length})
-                  </div>
-                  {queueActivity.next.length === 0 ? (
-                    <div className='qa-empty'>Nothing queued</div>
-                  ) : (
-                    queueActivity.next.map((it) => (
-                      <div key={it._id} className='qa-item'>
-                        <span className='qa-email'>{it.leadEmail || '—'}</span>
-                        <span className='qa-sub'>
-                          {it.scheduledAt
-                            ? 'due ' +
-                              new Date(it.scheduledAt).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : 'due now'}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                <div className='qa-col'>
-                  <div className='qa-head qa-head-sent'>
-                    ✓ Recently sent ({queueActivity.sent.length})
-                  </div>
-                  {queueActivity.sent.length === 0 ? (
-                    <div className='qa-empty'>None yet</div>
-                  ) : (
-                    queueActivity.sent.map((it) => (
-                      <div key={it._id} className='qa-item'>
-                        <span className='qa-email'>{it.leadEmail || '—'}</span>
-                        <span className='qa-sub'>
-                          {it.sentAt
-                            ? 'sent ' +
-                              new Date(it.sentAt).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })
-                            : ''}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
+            {/* Two-column layout: main content + queue-activity sidebar */}
+            <div className='dashboard-layout'>
+              <div className='dashboard-main'>
 
             {/* Mailboxes */}
             <div className='card table-card'>
@@ -2377,6 +2297,93 @@ export default function App() {
                 >
                   Next →
                 </button>
+              </div>
+            </div>
+              </div>
+              {/* ── Sidebar: live queue activity ── */}
+              <div className='dashboard-side'>
+                <div className='card qa-sidebar'>
+                  <div
+                    className='bulk-actions'
+                    style={{
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <h2 style={{ margin: 0 }}>Queue Activity</h2>
+                    <button
+                      className='btn-ghost'
+                      onClick={fetchQueueActivity}
+                    >
+                      ↻
+                    </button>
+                  </div>
+
+                  <div className='qa-section'>
+                    <div className='qa-head qa-head-sending'>● Sending now</div>
+                    {queueActivity.sending[0] ? (
+                      <div className='qa-item'>
+                        <span className='qa-email'>
+                          {queueActivity.sending[0].leadEmail || '—'}
+                        </span>
+                        <span className='qa-sub'>
+                          {queueActivity.sending[0].campaignName || 'campaign'} ·
+                          step {(queueActivity.sending[0].stepIndex || 0) + 1}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className='qa-empty'>Idle — nothing sending</div>
+                    )}
+                  </div>
+
+                  <div className='qa-section'>
+                    <div className='qa-head qa-head-next'>→ Next up</div>
+                    {queueActivity.next.length === 0 ? (
+                      <div className='qa-empty'>Nothing queued</div>
+                    ) : (
+                      queueActivity.next.slice(0, 5).map((it) => (
+                        <div key={it._id} className='qa-item'>
+                          <span className='qa-email'>
+                            {it.leadEmail || '—'}
+                          </span>
+                          <span className='qa-sub'>
+                            {it.scheduledAt
+                              ? 'due ' +
+                                new Date(it.scheduledAt).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'due now'}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className='qa-section'>
+                    <div className='qa-head qa-head-sent'>✓ Last 8 sent</div>
+                    {queueActivity.sent.length === 0 ? (
+                      <div className='qa-empty'>None yet</div>
+                    ) : (
+                      queueActivity.sent.slice(0, 8).map((it) => (
+                        <div key={it._id} className='qa-item'>
+                          <span className='qa-email'>
+                            {it.leadEmail || '—'}
+                          </span>
+                          <span className='qa-sub'>
+                            {it.sentAt
+                              ? 'sent ' +
+                                new Date(it.sentAt).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : ''}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
