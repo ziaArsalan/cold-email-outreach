@@ -612,6 +612,84 @@ tbody tr:hover td {
   text-transform: capitalize;
 }
 
+/* Mailbox health alert banner (dashboard) */
+.mailbox-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 1rem;
+  font-size: 13px;
+  color: var(--text);
+}
+.mailbox-alert-err {
+  color: var(--error);
+  font-size: 12px;
+  margin-top: 4px;
+  font-family: monospace;
+}
+
+/* Queue activity — 3 columns: sending / next / sent */
+.queue-activity {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+@media (max-width: 780px) {
+  .queue-activity {
+    grid-template-columns: 1fr;
+  }
+}
+.qa-col {
+  background: var(--surface2);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 60px;
+}
+.qa-head {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 8px;
+}
+.qa-head-sending {
+  color: var(--accent);
+}
+.qa-head-next {
+  color: var(--warning);
+}
+.qa-head-sent {
+  color: var(--success);
+}
+.qa-item {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+.qa-email {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qa-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.qa-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 0;
+}
+
 /* Lead status pills */
 .badge-new {
   background: rgba(100, 116, 139, 0.15);

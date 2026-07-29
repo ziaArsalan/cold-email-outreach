@@ -1797,6 +1797,47 @@ router.get('/analytics', async (req, res) => {
 })
 
 // GET /api/queue — paginated queued emails, optionally filtered by status.
+// GET /api/queue/activity — live queue snapshot for the dashboard: what's
+// sending now, who's next in line, and who was most recently sent to.
+router.get('/queue/activity', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const map = (item) => ({
+      _id: item._id,
+      status: item.status,
+      stepIndex: item.stepIndex || 0,
+      scheduledAt: item.scheduledAt,
+      sentAt: item.sentAt,
+      leadEmail: item.leadId && item.leadId.email,
+      campaignName: item.campaignId && item.campaignId.name,
+    })
+    const pop = (q) =>
+      q.populate('leadId', 'email').populate('campaignId', 'name').lean()
+
+    const [sending, next, sent] = await Promise.all([
+      pop(QueuedEmail.find({ status: 'sending' }).sort({ updatedAt: -1 }).limit(5)),
+      pop(
+        QueuedEmail.find({ status: { $in: ['pending', 'scheduled'] } })
+          .sort({ scheduledAt: 1, createdAt: 1 })
+          .limit(8),
+      ),
+      pop(QueuedEmail.find({ status: 'sent' }).sort({ sentAt: -1 }).limit(8)),
+    ])
+
+    res.json({
+      success: true,
+      sending: sending.map(map),
+      next: next.map(map),
+      sent: sent.map(map),
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 router.get('/queue', async (req, res) => {
   if (!dbReady())
     return res

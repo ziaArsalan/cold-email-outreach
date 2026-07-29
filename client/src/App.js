@@ -364,6 +364,11 @@ export default function App() {
   const [authed, setAuthed] = useState(!!localStorage.getItem('token'))
   // Dashboard analytics + live queue (T-012)
   const [analytics, setAnalytics] = useState(null)
+  const [queueActivity, setQueueActivity] = useState({
+    sending: [],
+    next: [],
+    sent: [],
+  })
   const [queue, setQueue] = useState({ items: [], total: 0, page: 1, pages: 1 })
   const [queueStatus, setQueueStatus] = useState('')
   const [queuePage, setQueuePage] = useState(1)
@@ -838,8 +843,19 @@ export default function App() {
     } catch (e) {}
   }
 
+  const fetchQueueActivity = async () => {
+    try {
+      const { data } = await axios.get(`${API}/queue/activity`)
+      setQueueActivity({
+        sending: data.sending || [],
+        next: data.next || [],
+        sent: data.sent || [],
+      })
+    } catch (e) {}
+  }
+
   const fetchDashboardAll = async () => {
-    await Promise.all([fetchAnalytics(), fetchQueue()])
+    await Promise.all([fetchAnalytics(), fetchQueue(), fetchQueueActivity()])
   }
 
   const markLead = async (leadId, action) => {
@@ -860,6 +876,17 @@ export default function App() {
   useEffect(() => {
     if (authed && tab === 'dashboard') fetchDashboardAll()
   }, [authed])
+
+  // Keep the dashboard live — refresh the queue activity + mailbox health every
+  // 15s while it's open, so "sending / next / sent" reflects reality.
+  useEffect(() => {
+    if (!authed || tab !== 'dashboard') return
+    const id = setInterval(() => {
+      fetchQueueActivity()
+      fetchAnalytics()
+    }, 15000)
+    return () => clearInterval(id)
+  }, [authed, tab])
 
   // ── Mailboxes (add / edit / test / pause / warm-up) ──
   const BLANK_MAILBOX = {
@@ -1677,6 +1704,36 @@ export default function App() {
               <p>Automate personalized cold emails powered by AI</p>
             </div>
 
+            {/* Mailbox health alerts — paused / errored mailboxes block sending */}
+            {analytics &&
+              (analytics.mailboxes || [])
+                .filter(
+                  (mb) =>
+                    mb.healthStatus === 'paused' ||
+                    mb.healthStatus === 'error',
+                )
+                .map((mb) => (
+                  <div key={mb._id} className='mailbox-alert'>
+                    <div>
+                      <strong>⚠ {mb.email}</strong> is{' '}
+                      <span className={`status-badge health-${mb.healthStatus}`}>
+                        {mb.healthStatus}
+                      </span>{' '}
+                      — sending is halted for this mailbox.
+                      {mb.lastError && (
+                        <div className='mailbox-alert-err'>{mb.lastError}</div>
+                      )}
+                    </div>
+                    <button
+                      className='btn-start'
+                      disabled={mailboxBusy}
+                      onClick={() => toggleMailboxPause(mb)}
+                    >
+                      ⚡ Reactivate
+                    </button>
+                  </div>
+                ))}
+
             {/* Stat cards — queue-level sends + lead-level rates */}
             <div className='stats-grid'>
               <div className='stat-card stat-emailed'>
@@ -1718,6 +1775,90 @@ export default function App() {
                     : 0}
                 </span>
                 <span className='stat-label'>Reply %</span>
+              </div>
+            </div>
+
+            {/* Live queue activity — sending now / next up / recently sent */}
+            <div className='card'>
+              <div
+                className='bulk-actions'
+                style={{
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <h2 style={{ margin: 0 }}>Queue Activity</h2>
+                <button className='btn-ghost' onClick={fetchQueueActivity}>
+                  ↻ Refresh
+                </button>
+              </div>
+              <div className='queue-activity'>
+                <div className='qa-col'>
+                  <div className='qa-head qa-head-sending'>
+                    ● Sending now ({queueActivity.sending.length})
+                  </div>
+                  {queueActivity.sending.length === 0 ? (
+                    <div className='qa-empty'>Idle — nothing sending</div>
+                  ) : (
+                    queueActivity.sending.map((it) => (
+                      <div key={it._id} className='qa-item'>
+                        <span className='qa-email'>{it.leadEmail || '—'}</span>
+                        <span className='qa-sub'>
+                          {it.campaignName || 'campaign'} · step{' '}
+                          {(it.stepIndex || 0) + 1}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className='qa-col'>
+                  <div className='qa-head qa-head-next'>
+                    → Next up ({queueActivity.next.length})
+                  </div>
+                  {queueActivity.next.length === 0 ? (
+                    <div className='qa-empty'>Nothing queued</div>
+                  ) : (
+                    queueActivity.next.map((it) => (
+                      <div key={it._id} className='qa-item'>
+                        <span className='qa-email'>{it.leadEmail || '—'}</span>
+                        <span className='qa-sub'>
+                          {it.scheduledAt
+                            ? 'due ' +
+                              new Date(it.scheduledAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : 'due now'}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className='qa-col'>
+                  <div className='qa-head qa-head-sent'>
+                    ✓ Recently sent ({queueActivity.sent.length})
+                  </div>
+                  {queueActivity.sent.length === 0 ? (
+                    <div className='qa-empty'>None yet</div>
+                  ) : (
+                    queueActivity.sent.map((it) => (
+                      <div key={it._id} className='qa-item'>
+                        <span className='qa-email'>{it.leadEmail || '—'}</span>
+                        <span className='qa-sub'>
+                          {it.sentAt
+                            ? 'sent ' +
+                              new Date(it.sentAt).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : ''}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
 
