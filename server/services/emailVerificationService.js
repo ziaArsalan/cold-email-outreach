@@ -3,7 +3,7 @@
 // for a paid verifier (no mailbox-exists check), just cheap upfront filtering:
 // format, MX records, disposable domains, role-based inboxes.
 
-const dns = require('dns').promises
+const { Resolver } = require('dns').promises
 const disposableDomains = require('disposable-email-domains')
 const config = require('../config')
 const settingsService = require('./settingsService')
@@ -40,15 +40,50 @@ const isDisposableDomain = (domain) => DISPOSABLE_SET.has((domain || '').toLower
 // domains (gmail.com, the same company, etc.), so this avoids redundant lookups.
 const mxCache = new Map()
 
+// Use reliable public resolvers (Google, Cloudflare) instead of the system/ISP/
+// host resolver — those frequently return transient SERVFAILs that would
+// otherwise be misread as "no MX record" and wrongly disqualify valid leads.
+// Overridable via DNS_SERVERS (comma-separated).
+const resolver = new Resolver({ timeout: 5000, tries: 2 })
+resolver.setServers(
+  (process.env.DNS_SERVERS || '8.8.8.8,1.1.1.1')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+)
+
+const hasA = async (domain) => {
+  try {
+    const a = await resolver.resolve4(domain)
+    return a.length > 0
+  } catch {
+    return false
+  }
+}
+
+// Whether a domain can receive mail. Deliberately LENIENT so a flaky DNS lookup
+// never silently drops a real lead:
+//   - MX records present            → deliverable
+//   - no MX but an A record present → deliverable (implicit MX, RFC 5321)
+//   - domain truly doesn't exist    → not deliverable
+//   - any transient DNS failure     → treated as deliverable (let the SMTP send
+//     decide; a real bounce is handled downstream)
 const hasMX = async (domain) => {
   if (!domain) return false
   if (mxCache.has(domain)) return mxCache.get(domain)
   let ok
   try {
-    const records = await dns.resolveMx(domain)
+    const records = await resolver.resolveMx(domain)
     ok = Array.isArray(records) && records.length > 0
-  } catch {
-    ok = false
+    if (!ok) ok = await hasA(domain)
+  } catch (e) {
+    if (e.code === 'ENOTFOUND' || e.code === 'ENODATA') {
+      // Domain exists but no MX / or no such record — fall back to A record.
+      ok = await hasA(domain)
+    } else {
+      // SERVFAIL / timeout / refused → transient; don't disqualify the lead.
+      ok = true
+    }
   }
   mxCache.set(domain, ok)
   return ok
