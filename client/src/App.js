@@ -2164,7 +2164,10 @@ export default function App() {
 
               {/* ── Sidebar: live queue activity ── */}
               <div className='dashboard-side'>
-                <div className='card qa-sidebar h-[calc(100vh-2rem)] overflow-y-auto'>
+                <div
+                  className='card qa-sidebar'
+                  style={{ height: '350px', overflowY: 'auto' }}
+                >
                   <div
                     className='bulk-actions'
                     style={{
