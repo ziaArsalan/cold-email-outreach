@@ -244,23 +244,41 @@ const processOne = async (deps = {}) => {
         })
         await log('warn', 'rotation', `mailbox paused (rate-limit): ${err.message}`, refs)
         await log('warn', 'retry', `rescheduled after rate-limit in ${backoff}ms`, refs)
-      } else if (category === 'auth-or-connection') {
-        // Pause with an auto-recovering window instead of a permanent 'error'
-        // dead-end. A transient SMTP hiccup (e.g. "Connection timeout") must not
-        // stall the whole campaign forever — the mailbox un-pauses itself after
-        // the window and the item retries.
-        const backoff = config.retry.backoffBaseMs * 2 ** Math.min(item.retries, 4)
+      } else if (category === 'connection') {
+        // Transient network/timeout on the sending connection. Do NOT pause the
+        // mailbox — that would stall every other email. Just delay THIS email
+        // and retry it later; the mailbox stays active so the next due email is
+        // attempted normally. Doesn't consume the retry budget, so a flaky
+        // network can't exhaust it — it self-heals when the connection recovers.
+        const delayMs = randomDelay(deps && deps.sendMode)
+        await reschedule(item, {
+          delayMs,
+          retriesIncrement: 0,
+          errorMessage: err.message,
+        })
+        await log(
+          'warn',
+          'retry',
+          `connection issue — retrying this email in ~${Math.round(
+            delayMs / 1000,
+          )}s (mailbox stays active): ${err.message}`,
+          refs,
+        )
+      } else if (category === 'auth') {
+        // Persistent credential failure — pause so we don't hammer the server
+        // (or trip a lockout) retrying every email with a bad password.
+        const backoff = config.retry.backoffBaseMs * 10
         await mailboxService.pause(
           mailbox._id,
           new Date(Date.now() + backoff),
-          `connection error: ${err.message}`,
+          `auth error: ${err.message}`,
         )
         await reschedule(item, {
           delayMs: backoff,
           retriesIncrement: 0,
           errorMessage: err.message,
         })
-        await log('warn', 'rotation', `mailbox paused (connection error): ${err.message}`, refs)
+        await log('error', 'error', `auth error — mailbox paused: ${err.message}`, refs)
       } else if (category === 'permanent') {
         await markBounced(item, {
           errorMessage: err.message,

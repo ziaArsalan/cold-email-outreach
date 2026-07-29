@@ -123,15 +123,25 @@ const classifySendError = (err) => {
   )
     return 'rate-limit'
 
+  // Real authentication failure — persistent (bad credentials). Retrying every
+  // email is pointless and can trip a lockout, so this one still pauses.
+  if (err.code === 'EAUTH') return 'auth'
+
+  // Transient network/timeout on the sending connection. These should NOT pause
+  // the whole mailbox — just delay and retry the single email (see the worker).
   const connCodes = [
-    'EAUTH',
     'ECONNECTION',
     'ETIMEDOUT',
     'ENOTFOUND',
     'ESOCKET',
     'ECONNREFUSED',
+    'ECONNRESET',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
+    'EDNS',
   ]
-  if (connCodes.includes(err.code)) return 'auth-or-connection'
+  if (connCodes.includes(err.code) || /timeout|timed out/i.test(text))
+    return 'connection'
 
   if (err.responseCode >= 500 && err.responseCode < 600) return 'permanent'
 
