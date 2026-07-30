@@ -27,6 +27,17 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-019] Client refactor — modular structure (AppContext + pages), phase 1
+- priority: P2
+- status: done
+- area: client
+- description: Break up the ~4.7k-line single `client/src/App.js` into a standard React structure **with zero behavior/UI change**. Foundation already done (`src/api.js`, `src/utils.js`, `src/components/LoginScreen.js`). Phase 1: introduce a shared state layer `src/context/AppContext.js` — an `AppProvider` that holds the state + handlers currently living in the App component, exposed via a `useApp()` hook so page components consume them instead of prop-drilling — and extract the two lowest-risk tabs, **Logs** and **Templates**, into `src/pages/LogsPage.js` and `src/pages/TemplatesPage.js` (each consuming the context). App.js keeps rendering all other tabs exactly as now. Later phases extract the remaining tabs (Dashboard, Lists, Campaigns, Upwork, Settings, Preview) and slim App.js to the shell. Requirement: no functional or visual regressions anywhere.
+- acceptance:
+  - [x] The Logs tab works exactly as before (category + since-date filters, pagination, TEST badge, campaign/template name resolution) after moving into `pages/LogsPage.js`
+  - [x] The Templates tab works exactly as before (list, create/edit, delete with referenced-guard, live `{{var}}` preview, Test modal + test history) after moving into `pages/TemplatesPage.js`
+  - [x] All other tabs (Dashboard, Lists, Campaigns, Upwork, Settings) and the mobile hamburger drawer still work — no regressions
+  - [x] Clean CRA production build (CI=true) and no console errors on load
+
 <!-- ═══ Outreach V2.2 (lead lists) — do T-017 then T-018 ═══ -->
 
 ## [T-017] Lead lists — listing module (List model, imports, list/leads UI)
