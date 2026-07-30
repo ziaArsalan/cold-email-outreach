@@ -27,6 +27,17 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-021] Client refactor — extract Lists + Preview pages, phase 3
+- priority: P2
+- status: done
+- area: client
+- description: Continue the T-019/T-020 breakup of `client/src/App.js` with the established `AppContext`/`useApp()` pattern (see MEMORY "Frontend structure"). **Zero behavior/UI change.** Extract the **Lists/Leads** tab (`{tab === 'leads' && (...)}` — both the lists-index view and the list-detail view: search + status filter + add-lead form, CSV/Sheet import, assign, per-lead regenerate/resend/delete, pagination) into `src/pages/LeadsPage.js`, and the small **Preview** view (`{tab === 'preview' && (...)}`, reached from a lead's Preview action) into `src/pages/PreviewPage.js` — each consuming `useApp()`. Any root-level modals those views open (e.g. the per-lead Email edit modal) STAY at app-root in App.js per the T-019/T-020 modal precedent; the page just pulls the modal's `setX` opener from context. Drop the now-unused keys from the `AppShell` destructure (keep any still referenced by the sidebar nav or app-root modals). Later phases handle Dashboard and Campaigns.
+- acceptance:
+  - [x] The Lists tab works exactly as before (lists index + create list; open a list → search, status filter, Add-Lead, CSV/Sheet import summary, select+Assign, per-lead Regenerate/Resend/Delete + Email modal, pagination) after moving into `src/pages/LeadsPage.js`
+  - [x] The Preview view works exactly as before (reached from a lead's Preview action; renders the composed email) after moving into `src/pages/PreviewPage.js` — verified via clean compile (unreachable read-only without a real AI call)
+  - [x] All other tabs (Dashboard, Campaigns, Templates, Upwork, Settings, Logs) and the mobile hamburger drawer still work — no regressions
+  - [x] Clean CRA production build (CI=true) and no console errors on load
+
 ## [T-020] Client refactor — extract Upwork + Settings pages, phase 2
 - priority: P2
 - status: done
