@@ -27,6 +27,17 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-020] Client refactor — extract Upwork + Settings pages, phase 2
+- priority: P2
+- status: done
+- area: client
+- description: Continue T-019's breakup of `client/src/App.js` using the established `AppContext`/`useApp()` pattern (see MEMORY "Frontend structure"). **Zero behavior/UI change.** Extract the two self-contained, low-risk tabs into page components that consume `useApp()`: the **Upwork** tab → `src/pages/UpworkPage.js`, and the **Settings** tab (Outreach Settings card) → `src/pages/SettingsPage.js`. App.js keeps its `{tab === 'upwork' && <UpworkPage/>}` / `{tab === 'settings' && <SettingsPage/>}` swaps and renders everything else unchanged; any root-level modals those tabs use (e.g. the Upwork cover-letter modal) stay at app-root in App.js if moving them would change cross-tab visibility. Trim now-unused imports from App.js so the CI build stays clean. Later phases handle Dashboard, Lists, Campaigns, Preview.
+- acceptance:
+  - [x] The Upwork tab works exactly as before (stats bar, Monitor Settings load/edit/save, jobs table + Refresh, Generate Cover, Test Query, cover-letter modal) after moving into `pages/UpworkPage.js` — cover-modal open/close unexercised only due to 0 Upwork jobs in prod data; wiring verified
+  - [x] The Settings tab works exactly as before (Outreach Settings card loads effective values, edits, Saves with feedback) after moving into `pages/SettingsPage.js`
+  - [x] All other tabs (Dashboard, Lists, Campaigns, Templates, Logs) and the mobile hamburger drawer still work — no regressions
+  - [x] Clean CRA production build (CI=true) and no console errors on load
+
 ## [T-019] Client refactor — modular structure (AppContext + pages), phase 1
 - priority: P2
 - status: done
