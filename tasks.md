@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-022] Client refactor — extract Dashboard page, phase 4
+- priority: P2
+- status: done
+- area: client
+- description: Continue the T-019→T-021 breakup of `client/src/App.js` with the established `AppContext`/`useApp()` pattern (see MEMORY "Frontend structure"; auto-approved refactor phase). **Zero behavior/UI change.** Extract the **Dashboard** tab (`{tab === 'dashboard' && (...)}` — stat cards, mailbox health alert banner, Queue Activity sidebar, Mailboxes card incl. its Add/Edit form + Test/Pause/Reactivate row actions, Campaign Performance table, Live Queue table + status filter + pagination) into `src/pages/DashboardPage.js` consuming `useApp()`. Any root-level modal it opens stays at app-root in App.js (the page pulls the `setX` opener from context). Drop the now-unused keys from the `AppShell` destructure (keep any still used by the sidebar nav onClick — e.g. `fetchDashboardAll` — or by app-root modals). Only Campaigns remains inline after this. Verify the `AppShell` mobile-drawer/nav still works and no other tab regressed.
+- acceptance:
+  - [x] The Dashboard tab works exactly as before (6 stat cards; mailbox paused/error alert banner + Reactivate; Queue Activity sidebar sending/next/sent; Mailboxes table with Add Mailbox form + per-row Test/Edit/Pause-or-Reactivate; Campaign Performance; Live Queue with status filter + Prev/Next + Mark replied/bounced) after moving into `src/pages/DashboardPage.js`
+  - [x] All other tabs (Lists, Campaigns, Templates, Upwork, Settings, Logs, Preview) and the mobile hamburger drawer still work — no regressions
+  - [x] Clean CRA production build (CI=true) and no console errors on load
+
 ## [T-021] Client refactor — extract Lists + Preview pages, phase 3
 - priority: P2
 - status: done
