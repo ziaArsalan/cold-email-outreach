@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-027] Google Maps import: lead-quality filter + live loading UI
+- priority: P2
+- status: done
+- area: both
+- description: Improve Apify Google Maps lead quality and import feedback. Filter before saving — drop junk (asset filenames, platform/placeholder domains), prefer a personal email over a generic role inbox when a site lists several, and add a "Skip generic inboxes (info@/contact@…)" toggle (default on) that drops role-only places; report the count skipped. Replace the disabled-button-only state during the 1–2 min scrape with a live loading card (spinner + staged status + elapsed timer), scoped to the Maps fetch.
+- acceptance:
+  - [x] Junk emails dropped; personal preferred over generic; "Skip generic inboxes" toggle drops role-only places and the summary shows how many were skipped
+  - [x] The Google Maps fetch shows a spinner + advancing status + elapsed timer while running (not just a disabled button)
+  - [x] Server + client build clean; filter logic verified across cases
+
 ## [T-026] Real URL routing; campaign/template forms as nested routes
 - priority: P2
 - status: done

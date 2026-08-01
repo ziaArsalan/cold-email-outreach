@@ -1,5 +1,9 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
+
+// Elapsed m:ss for the long-running Google Maps fetch loading indicator.
+const fmtElapsed = (s) =>
+  `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 export default function LeadsPage() {
   const {
@@ -26,6 +30,7 @@ export default function LeadsPage() {
     setSheetImport,
     mapsImport,
     setMapsImport,
+    mapsBusy,
     fetchLists,
     fetchListLeads,
     openListView,
@@ -50,6 +55,25 @@ export default function LeadsPage() {
     resendLead,
     markListLead,
   } = useApp()
+
+  // Tick an elapsed counter while the Google Maps fetch runs so the loading card
+  // proves it's still working (the actor call can take a minute or two).
+  const [mapsElapsed, setMapsElapsed] = useState(0)
+  useEffect(() => {
+    if (!mapsBusy) return
+    setMapsElapsed(0)
+    const id = setInterval(() => setMapsElapsed((s) => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [mapsBusy])
+
+  // Rough stage narration driven by elapsed time (the request is a single call
+  // with no server-side progress, so this reassures rather than reports exactly).
+  const mapsStage =
+    mapsElapsed < 8
+      ? 'Searching Google Maps for matching businesses…'
+      : mapsElapsed < 45
+        ? 'Visiting each business website to find a public email…'
+        : 'Almost done — filtering and saving leads…'
 
   return (
     <>
@@ -301,16 +325,61 @@ export default function LeadsPage() {
                       disabled={importBusy}
                       onClick={importMaps}
                     >
-                      {importBusy ? 'Fetching…' : 'Fetch Leads'}
+                      {mapsBusy ? 'Fetching…' : 'Fetch Leads'}
                     </button>
                   </div>
+                  <div className='control-group full-width'>
+                    <label className='checkbox-row'>
+                      <input
+                        type='checkbox'
+                        checked={mapsImport.skipRoleBased}
+                        disabled={importBusy}
+                        onChange={(e) =>
+                          setMapsImport((m) => ({
+                            ...m,
+                            skipRoleBased: e.target.checked,
+                          }))
+                        }
+                      />
+                      Skip generic inboxes (info@, contact@, sales@…) — keep only
+                      personal/named emails
+                    </label>
+                    <span className='field-note'>
+                      Recommended for 1:1 outreach. Turn off if a search returns
+                      too few leads (many small businesses only list a generic
+                      inbox).
+                    </span>
+                  </div>
                 </div>
-                {importSummary && (
+
+                {/* Long-running fetch: show a live loading card so it's clear
+                    something is happening (not stuck). */}
+                {mapsBusy && (
+                  <div
+                    className='card loading-card'
+                    style={{ marginTop: '0.75rem' }}
+                  >
+                    <div className='spinner' />
+                    <p style={{ margin: '0.5rem 0 0.25rem' }}>{mapsStage}</p>
+                    <span className='field-note'>
+                      Elapsed {fmtElapsed(mapsElapsed)} · usually 1–2 minutes.
+                      Keep this tab open.
+                    </span>
+                  </div>
+                )}
+
+                {importSummary && !mapsBusy && (
                   <p style={{ marginTop: '0.75rem', color: 'var(--muted)' }}>
                     {importSummary.foundPlaces != null && (
                       <>
                         Found {importSummary.foundPlaces} places ·{' '}
-                        {importSummary.withEmail} with email ·{' '}
+                        {importSummary.withEmail} with a usable email ·{' '}
+                        {importSummary.roleBasedSkipped > 0 && (
+                          <>
+                            {importSummary.roleBasedSkipped} generic inboxes
+                            skipped ·{' '}
+                          </>
+                        )}
                       </>
                     )}
                     Inserted {importSummary.inserted} · Updated{' '}

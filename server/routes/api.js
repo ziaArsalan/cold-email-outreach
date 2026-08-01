@@ -2342,10 +2342,10 @@ router.post('/lists/:id/import-maps', async (req, res) => {
         return res.status(404).json({ success: false, error: 'List not found' })
     }
 
-    const { query, maxResults } = req.body || {}
+    const { query, maxResults, skipRoleBased } = req.body || {}
     let result
     try {
-      result = await fetchGoogleMapsLeads(query, maxResults)
+      result = await fetchGoogleMapsLeads(query, maxResults, { skipRoleBased })
     } catch (err) {
       // Config/validation/Apify failures — surface a clean 400 (not a 500 stack).
       return res.status(400).json({ success: false, error: err.message })
@@ -2362,6 +2362,7 @@ router.post('/lists/:id/import-maps', async (req, res) => {
       ...summary,
       foundPlaces: result.foundPlaces,
       withEmail: result.rows.length,
+      roleBasedSkipped: result.roleBasedSkipped,
     })
   } catch (err) {
     if (err.name === 'CastError')

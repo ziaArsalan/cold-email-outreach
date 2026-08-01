@@ -47,7 +47,14 @@ export function AppProvider({ children }) {
   const [importBusy, setImportBusy] = useState(false)
   const [importSummary, setImportSummary] = useState(null)
   const [sheetImport, setSheetImport] = useState({ sheetId: '', tab: '' })
-  const [mapsImport, setMapsImport] = useState({ query: '', maxResults: 20 })
+  const [mapsImport, setMapsImport] = useState({
+    query: '',
+    maxResults: 20,
+    skipRoleBased: true,
+  })
+  // Separate flag for the Google Maps fetch so its long-running loading UI shows
+  // only for that import (CSV/Sheet imports are fast and share importBusy).
+  const [mapsBusy, setMapsBusy] = useState(false)
   const [emailModal, setEmailModal] = useState(null)
   // Logs viewer (SendLog)
   const [logs, setLogs] = useState({ items: [], total: 0, page: 1, pages: 1 })
@@ -374,11 +381,16 @@ export function AppProvider({ children }) {
       return
     }
     setImportBusy(true)
+    setMapsBusy(true)
     setImportSummary(null)
     try {
       const { data } = await axios.post(
         `${API}/lists/${openList._id}/import-maps`,
-        { query, maxResults: mapsImport.maxResults },
+        {
+          query,
+          maxResults: mapsImport.maxResults,
+          skipRoleBased: mapsImport.skipRoleBased,
+        },
       )
       setImportSummary({
         inserted: data.inserted,
@@ -386,6 +398,7 @@ export function AppProvider({ children }) {
         skipped: data.skipped,
         foundPlaces: data.foundPlaces,
         withEmail: data.withEmail,
+        roleBasedSkipped: data.roleBasedSkipped,
       })
       await fetchListLeads(openList._id)
       await fetchLists()
@@ -396,6 +409,7 @@ export function AppProvider({ children }) {
       )
     } finally {
       setImportBusy(false)
+      setMapsBusy(false)
     }
   }
 
@@ -1457,6 +1471,7 @@ export function AppProvider({ children }) {
         setSheetImport,
         mapsImport,
         setMapsImport,
+        mapsBusy,
         emailModal,
         setEmailModal,
         logs,
