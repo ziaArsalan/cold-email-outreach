@@ -9,6 +9,7 @@ export default function CampaignsPage() {
     openCampaignView,
     campaignActionId,
     campaignAction,
+    duplicateCampaignToList,
     openEditCampaign,
     deleteCampaign,
     editingCampaignId,
@@ -164,6 +165,25 @@ export default function CampaignsPage() {
                     >
                       ⊙ View
                     </button>
+                    {/* Copy the same campaign config to another list (draft). */}
+                    <select
+                      className='btn-ghost'
+                      value=''
+                      disabled={campaignActionId === c._id || !lists.length}
+                      title='Copy this campaign to another list'
+                      onChange={(e) => {
+                        if (e.target.value)
+                          duplicateCampaignToList(c, e.target.value)
+                        e.target.value = ''
+                      }}
+                    >
+                      <option value=''>⧉ Copy to list…</option>
+                      {lists.map((l) => (
+                        <option key={l._id} value={l._id}>
+                          {l.name} ({l.leadCount} leads)
+                        </option>
+                      ))}
+                    </select>
                     {c.status === 'draft' && (
                       <>
                         <button

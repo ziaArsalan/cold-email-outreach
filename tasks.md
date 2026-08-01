@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-025] Copy a campaign to another list
+- priority: P2
+- status: done
+- area: both
+- description: Let the same campaign config run against a different audience. A per-row "⧉ Copy to list…" dropdown on the Campaigns page clones a campaign's reusable config (template, follow-up sequence, mailboxes, AI prompt, schedule, daily limit, warm-up) into a NEW draft campaign pointed at the chosen list via `POST /api/campaigns/:id/duplicate`. Non-destructive — source campaign + stats untouched; clone named `"<source> → <list>"`, status draft.
+- acceptance:
+  - [x] Each campaign row has a "Copy to list…" control listing all lists; picking one creates a draft clone targeting that list
+  - [x] Clone copies template/steps/mailboxes/AI prompt/schedule/limit/warm-up; source campaign is unchanged
+  - [x] Endpoint validates the target list exists (400 otherwise); server + client build clean; live round-trip verified
+
 ## [T-024] Fetch real leads from Google Maps (Apify) into a list
 - priority: P2
 - status: done

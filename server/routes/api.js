@@ -1701,6 +1701,67 @@ for (const action of ['pause', 'resume', 'stop', 'reopen']) {
   })
 }
 
+// POST /api/campaigns/:id/duplicate — clone a campaign's full config into a NEW
+// draft campaign pointed at a different list, so the same setup (template,
+// sequence, mailboxes, AI prompt, schedule, limits) can be run against another
+// audience. Non-destructive: the source campaign and its stats are untouched.
+router.post('/campaigns/:id/duplicate', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const { listId, name } = req.body || {}
+    if (!listId)
+      return res
+        .status(400)
+        .json({ success: false, error: 'A target listId is required' })
+    if (
+      !mongoose.Types.ObjectId.isValid(listId) ||
+      !(await List.exists({ _id: listId }))
+    )
+      return res.status(400).json({
+        success: false,
+        error: 'listId does not refer to an existing list',
+      })
+
+    let source
+    try {
+      source = await Campaign.findById(req.params.id).lean()
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res
+          .status(404)
+          .json({ success: false, error: 'Campaign not found' })
+      throw err
+    }
+    if (!source)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Campaign not found' })
+
+    // Copy only the reusable config — never the source's status/stats/timestamps
+    // or the leads it already ran against. The clone starts fresh as a draft.
+    const list = await List.findById(listId).select('name').lean()
+    const campaign = await Campaign.create({
+      name: (name && name.trim()) || `${source.name} → ${list.name}`,
+      templateId: source.templateId,
+      steps: source.steps || [],
+      aiPrompt: source.aiPrompt,
+      mailboxIds: source.mailboxIds || [],
+      dailyLimit: source.dailyLimit,
+      warmupEnabled: source.warmupEnabled,
+      htmlEnabled: source.htmlEnabled,
+      schedule: source.schedule,
+      listId,
+      status: 'draft',
+    })
+    res.status(201).json({ success: true, campaign })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // DELETE /api/campaigns/:id — remove a non-running campaign + its queue items
 router.delete('/campaigns/:id', async (req, res) => {
   if (!dbReady())

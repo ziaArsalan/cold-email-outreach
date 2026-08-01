@@ -1127,6 +1127,36 @@ export function AppProvider({ children }) {
     }
   }
 
+  // Clone a campaign's config into a new draft campaign aimed at another list.
+  // Non-destructive — the source campaign is untouched. Returns nothing; on
+  // success the new draft appears in the list and we jump the user to it.
+  const duplicateCampaignToList = async (campaign, listId) => {
+    if (!listId || campaignActionLock.current.has(campaign._id)) return
+    campaignActionLock.current.add(campaign._id)
+    setCampaignActionId(campaign._id)
+    try {
+      const { data } = await axios.post(
+        `${API}/campaigns/${campaign._id}/duplicate`,
+        { listId },
+      )
+      await fetchCampaigns()
+      const listName =
+        lists.find((l) => l._id === listId)?.name || 'the selected list'
+      alert(
+        `Created "${data.campaign.name}" as a draft targeting ${listName}. ` +
+          'Review it and press Start when ready.',
+      )
+    } catch (err) {
+      alert(
+        'Failed to copy campaign: ' +
+          (err.response?.data?.error || err.message),
+      )
+    } finally {
+      campaignActionLock.current.delete(campaign._id)
+      setCampaignActionId(null)
+    }
+  }
+
   const toggleCampaignDay = (day) => {
     setNewCampaign((c) => ({
       ...c,
@@ -1546,6 +1576,7 @@ export function AppProvider({ children }) {
         deleteCampaign,
         openCampaignView,
         campaignAction,
+        duplicateCampaignToList,
         toggleCampaignDay,
         toggleCampaignMailbox,
         addFollowup,
