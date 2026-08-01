@@ -27,6 +27,17 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-023] Client refactor — extract Campaigns page (final phase), App.js = shell
+- priority: P2
+- status: done
+- area: client
+- description: Final phase of the T-019→T-022 App.js breakup (auto-approved refactor phase; MEMORY "Frontend structure"). **Zero behavior/UI change.** Extract the **Campaigns** tab (`{tab === 'campaigns' && (...)}` — the campaigns list with per-row status actions Start/Pause/Resume/Stop/Edit/Delete/Restart/View, and the New/Edit Campaign form: name, template dropdown, AI prompt, mailbox multi-select, daily limit, warm-up toggle, day/time schedule, and the follow-up **sequence builder**) into `src/pages/CampaignsPage.js` consuming `useApp()`. The **Campaign View modal** (queue + logs) stays at app-root in App.js per the modal precedent; the page just pulls its `setX` opener from context. Drop the now-unused keys from the `AppShell` destructure (keep any still used by the sidebar nav onClick — e.g. `fetchCampaignsAll` — or by app-root modals) and trim any now-unused `./utils` imports (`WEEKDAYS`, `scheduleSummary`). After this **App.js is a true thin shell** (sidebar + mobile drawer + `{tab === 'x' && <XPage/>}` swaps + app-root modals only). Verify nav/drawer + every tab still work.
+- acceptance:
+  - [x] The Campaigns tab works exactly as before (campaigns list with correct per-status action buttons; ⊙ View opens the campaign queue+logs modal; New Campaign form with template/mailbox/list dropdowns, AI prompt, schedule, and the +Add-follow-up sequence builder; Edit loads a campaign into the form) after moving into `src/pages/CampaignsPage.js`
+  - [x] All other tabs (Dashboard, Lists, Templates, Upwork, Settings, Logs, Preview) and the mobile hamburger drawer still work — no regressions
+  - [x] App.js contains no remaining `{tab === '...' && ( ...inline JSX... )}` tab bodies — only `<XPage/>` swaps + app-root modals
+  - [x] Clean CRA production build (CI=true) and no console errors on load
+
 ## [T-022] Client refactor — extract Dashboard page, phase 4
 - priority: P2
 - status: done
