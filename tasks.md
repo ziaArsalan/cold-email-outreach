@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-028] Duplicate-email detection on lead upload
+- priority: P2
+- status: done
+- area: both
+- description: Detect and report duplicate emails when uploading leads (CSV/Sheet/Maps). `upsertLeadsIntoList` collapses in-file duplicates (last wins) and reports how many uploaded emails already existed as leads (moved/updated, never duplicated — unique email index guarantees no dup docs). Import summary shows a clear breakdown (new / already-existed / in-file duplicates merged / skipped). Manual Add Lead already warns on an existing email.
+- acceptance:
+  - [x] Uploading a file with a repeated email collapses it and reports the in-file duplicate count
+  - [x] Emails already in the DB are reported as "already existed" (updated/moved), not inserted as new; no duplicate documents created
+  - [x] Import summary shows the breakdown; server + client build clean; counting unit-tested
+
 ## [T-027] Google Maps import: lead-quality filter + live loading UI
 - priority: P2
 - status: done

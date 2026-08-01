@@ -57,14 +57,38 @@ const mapRow = (row) => {
   return mapped
 }
 
-// Map + bulk-upsert rows into a list. Dedupes by email; existing leads are
-// updated (moved into the list, source refreshed), new ones inserted.
+// Map + bulk-upsert rows into a list, with duplicate detection. An email can
+// never produce a duplicate document (unique index + upsert), so this reports
+// duplicates instead of creating them:
+//   - duplicatesInFile: rows collapsed because the same email appeared more than
+//     once in THIS upload (the last occurrence wins, so fuller later rows keep).
+//   - duplicatesInDb (== updated): unique emails that already existed as leads —
+//     these are moved into this list / refreshed rather than inserted as new.
+//   - inserted: brand-new leads; skipped: rows with no usable/valid email.
 const upsertLeadsIntoList = async (rows, listId, source) => {
   const mappedRows = (rows || []).map(mapRow)
   const valid = mappedRows.filter(Boolean)
   const skipped = mappedRows.length - valid.length
 
-  const ops = valid.map((fields) => ({
+  // Collapse in-file duplicates by email (last wins).
+  const byEmail = new Map()
+  for (const r of valid) byEmail.set(r.email, r)
+  const unique = [...byEmail.values()]
+  const duplicatesInFile = valid.length - unique.length
+
+  if (!unique.length)
+    return { inserted: 0, updated: 0, skipped, duplicatesInFile, duplicatesInDb: 0 }
+
+  // Which of these emails already exist? bulkWrite's modifiedCount misses
+  // matched-but-unchanged docs, so count existence explicitly for accuracy.
+  const emails = unique.map((r) => r.email)
+  const existing = await Lead.find({ email: { $in: emails } })
+    .select('email')
+    .lean()
+  const duplicatesInDb = new Set(existing.map((l) => l.email)).size
+  const inserted = unique.length - duplicatesInDb
+
+  const ops = unique.map((fields) => ({
     updateOne: {
       filter: { email: fields.email },
       update: {
@@ -74,14 +98,14 @@ const upsertLeadsIntoList = async (rows, listId, source) => {
       upsert: true,
     },
   }))
+  await Lead.bulkWrite(ops, { ordered: false })
 
-  if (!ops.length) return { inserted: 0, updated: 0, skipped }
-
-  const result = await Lead.bulkWrite(ops, { ordered: false })
   return {
-    inserted: result.upsertedCount || 0,
-    updated: result.modifiedCount || 0,
+    inserted,
+    updated: duplicatesInDb, // kept for existing callers; == duplicatesInDb
     skipped,
+    duplicatesInFile,
+    duplicatesInDb,
   }
 }
 

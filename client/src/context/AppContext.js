@@ -325,6 +325,7 @@ export function AppProvider({ children }) {
           inserted: data.inserted,
           updated: data.updated,
           skipped: data.skipped,
+          duplicatesInFile: data.duplicatesInFile,
         })
         await fetchListLeads(openList._id)
         await fetchLists()
@@ -359,6 +360,7 @@ export function AppProvider({ children }) {
         inserted: data.inserted,
         updated: data.updated,
         skipped: data.skipped,
+        duplicatesInFile: data.duplicatesInFile,
       })
       await fetchListLeads(openList._id)
       await fetchLists()
@@ -396,6 +398,7 @@ export function AppProvider({ children }) {
         inserted: data.inserted,
         updated: data.updated,
         skipped: data.skipped,
+        duplicatesInFile: data.duplicatesInFile,
         foundPlaces: data.foundPlaces,
         withEmail: data.withEmail,
         roleBasedSkipped: data.roleBasedSkipped,

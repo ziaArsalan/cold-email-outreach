@@ -382,8 +382,28 @@ export default function LeadsPage() {
                         )}
                       </>
                     )}
-                    Inserted {importSummary.inserted} · Updated{' '}
-                    {importSummary.updated} · Skipped {importSummary.skipped}
+                    {importSummary.inserted} new added
+                    {importSummary.updated > 0 && (
+                      <>
+                        {' '}
+                        · {importSummary.updated} already existed (updated &amp;
+                        moved here)
+                      </>
+                    )}
+                    {importSummary.duplicatesInFile > 0 && (
+                      <>
+                        {' '}
+                        · {importSummary.duplicatesInFile} duplicate row
+                        {importSummary.duplicatesInFile === 1 ? '' : 's'} in file
+                        merged
+                      </>
+                    )}
+                    {importSummary.skipped > 0 && (
+                      <>
+                        {' '}
+                        · {importSummary.skipped} skipped (no/invalid email)
+                      </>
+                    )}
                   </p>
                 )}
               </div>
