@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-024] Fetch real leads from Google Maps (Apify) into a list
+- priority: P2
+- status: done
+- area: both
+- description: Add a free lead-sourcing path. On a list's detail view, a "Fetch from Google Maps" panel (search query + max places) runs the Apify `compass/crawler-google-places` actor server-side (`scrapeContacts:true` crawls each business site for a public email), keeps only places that yielded an email, dedupes by email, and upserts them into the list via the shared `upsertLeadsIntoList` (source `maps`). New: `server/services/apifyLeadsService.js`, `POST /api/lists/:id/import-maps`, `Lead`/`List` source enum `maps`, `mapsImport` state + `importMaps` handler in AppContext, LeadsPage UI + summary (found/with-email/inserted/updated/skipped). Actor id configurable via `APIFY_MAPS_ACTOR`; hard cap 120 places to protect free-tier credits.
+- acceptance:
+  - [x] Import Leads card shows a "Fetch from Google Maps" panel (query + max places + Fetch button) on a real list
+  - [x] Running a query scrapes Maps and imports only businesses with an email; summary shows found/with-email/inserted/updated/skipped
+  - [x] Server and client build clean; new modules load; live actor run verified end-to-end
+
 ## [T-023] Client refactor — extract Campaigns page (final phase), App.js = shell
 - priority: P2
 - status: done

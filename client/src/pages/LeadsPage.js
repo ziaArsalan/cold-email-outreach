@@ -24,6 +24,8 @@ export default function LeadsPage() {
     importSummary,
     sheetImport,
     setSheetImport,
+    mapsImport,
+    setMapsImport,
     fetchLists,
     fetchListLeads,
     openListView,
@@ -41,6 +43,7 @@ export default function LeadsPage() {
     assignSelected,
     importCsv,
     importSheet,
+    importMaps,
     openLeadEmail,
     regenerateListIntros,
     deleteLead,
@@ -247,8 +250,69 @@ export default function LeadsPage() {
                     </button>
                   </div>
                 </div>
+                <div
+                  style={{
+                    borderTop: '1px solid var(--border)',
+                    margin: '1rem 0 0.75rem',
+                  }}
+                />
+                <h3 style={{ margin: '0 0 0.25rem' }}>
+                  Fetch from Google Maps
+                </h3>
+                <p className='field-note' style={{ marginTop: 0 }}>
+                  Searches Google Maps and imports only businesses whose website
+                  lists a public email. This runs a live scrape and can take a
+                  minute or two.
+                </p>
+                <div className='settings-fields-grid'>
+                  <div className='control-group'>
+                    <label>Search query</label>
+                    <input
+                      type='text'
+                      value={mapsImport.query}
+                      disabled={importBusy}
+                      onChange={(e) =>
+                        setMapsImport((m) => ({ ...m, query: e.target.value }))
+                      }
+                      placeholder='e.g. restaurants in Riyadh'
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>Max places</label>
+                    <input
+                      type='number'
+                      min='1'
+                      max='120'
+                      value={mapsImport.maxResults}
+                      disabled={importBusy}
+                      onChange={(e) =>
+                        setMapsImport((m) => ({
+                          ...m,
+                          maxResults: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className='control-group'>
+                    <label>&nbsp;</label>
+                    <button
+                      className='btn-start'
+                      type='button'
+                      disabled={importBusy}
+                      onClick={importMaps}
+                    >
+                      {importBusy ? 'Fetching…' : 'Fetch Leads'}
+                    </button>
+                  </div>
+                </div>
                 {importSummary && (
                   <p style={{ marginTop: '0.75rem', color: 'var(--muted)' }}>
+                    {importSummary.foundPlaces != null && (
+                      <>
+                        Found {importSummary.foundPlaces} places ·{' '}
+                        {importSummary.withEmail} with email ·{' '}
+                      </>
+                    )}
                     Inserted {importSummary.inserted} · Updated{' '}
                     {importSummary.updated} · Skipped {importSummary.skipped}
                   </p>

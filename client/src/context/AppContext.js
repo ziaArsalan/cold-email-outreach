@@ -44,6 +44,7 @@ export function AppProvider({ children }) {
   const [importBusy, setImportBusy] = useState(false)
   const [importSummary, setImportSummary] = useState(null)
   const [sheetImport, setSheetImport] = useState({ sheetId: '', tab: '' })
+  const [mapsImport, setMapsImport] = useState({ query: '', maxResults: 20 })
   const [emailModal, setEmailModal] = useState(null)
   // Logs viewer (SendLog)
   const [logs, setLogs] = useState({ items: [], total: 0, page: 1, pages: 1 })
@@ -354,6 +355,41 @@ export function AppProvider({ children }) {
     } catch (err) {
       alert(
         'Sheet import failed: ' + (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setImportBusy(false)
+    }
+  }
+
+  // Fetch real business leads from Google Maps via Apify. Long-running (the
+  // actor crawls Maps + each site), so importBusy gates the whole panel.
+  const importMaps = async () => {
+    if (!openList) return
+    const query = mapsImport.query.trim()
+    if (!query) {
+      alert('Enter a search query, e.g. "restaurants in Riyadh"')
+      return
+    }
+    setImportBusy(true)
+    setImportSummary(null)
+    try {
+      const { data } = await axios.post(
+        `${API}/lists/${openList._id}/import-maps`,
+        { query, maxResults: mapsImport.maxResults },
+      )
+      setImportSummary({
+        inserted: data.inserted,
+        updated: data.updated,
+        skipped: data.skipped,
+        foundPlaces: data.foundPlaces,
+        withEmail: data.withEmail,
+      })
+      await fetchListLeads(openList._id)
+      await fetchLists()
+    } catch (err) {
+      alert(
+        'Google Maps import failed: ' +
+          (err.response?.data?.error || err.message),
       )
     } finally {
       setImportBusy(false)
@@ -1352,6 +1388,8 @@ export function AppProvider({ children }) {
         setImportSummary,
         sheetImport,
         setSheetImport,
+        mapsImport,
+        setMapsImport,
         emailModal,
         setEmailModal,
         logs,
@@ -1467,6 +1505,7 @@ export function AppProvider({ children }) {
         assignSelected,
         importCsv,
         importSheet,
+        importMaps,
         openLeadEmail,
         saveLeadEmail,
         revertLeadEmail,

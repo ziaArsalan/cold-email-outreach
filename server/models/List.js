@@ -6,7 +6,7 @@ const listSchema = new mongoose.Schema(
     description: String,
     source: {
       type: String,
-      enum: ['csv', 'sheets', 'manual', 'mixed'],
+      enum: ['csv', 'sheets', 'manual', 'mixed', 'maps'],
       default: 'manual',
     },
   },

@@ -49,7 +49,7 @@ const leadSchema = new mongoose.Schema(
     bounceStatus: String,
     source: {
       type: String,
-      enum: ['sheets', 'csv', 'apollo', 'manual'],
+      enum: ['sheets', 'csv', 'apollo', 'manual', 'maps'],
       default: 'manual',
     },
   },

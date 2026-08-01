@@ -25,6 +25,7 @@ const config = require('../jobs/config')
 const mongoose = require('mongoose')
 const { Lead, List, Template, Mailbox, Campaign, QueuedEmail, SendLog } = require('../models')
 const { upsertLeadsIntoList } = require('../services/leadImportService')
+const { fetchGoogleMapsLeads } = require('../services/apifyLeadsService')
 const sheetsService = require('../services/sheetsService')
 const { parse } = require('csv-parse/sync')
 const { render } = require('../services/templateService')
@@ -2256,6 +2257,51 @@ router.post('/lists/:id/import-sheet', async (req, res) => {
     const summary = await upsertLeadsIntoList(rows, req.params.id, 'sheets')
     await bumpListSource(req.params.id, 'sheets')
     res.json({ success: true, ...summary })
+  } catch (err) {
+    if (err.name === 'CastError')
+      return res.status(404).json({ success: false, error: 'List not found' })
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/lists/:id/import-maps — fetch real business leads from Google Maps
+// via Apify (only places that yielded an email are imported) and upsert into the
+// list. Long-running (the actor crawls Maps + each website) — the client shows a
+// loading state. Returns the upsert summary + foundPlaces/withEmail counts.
+router.post('/lists/:id/import-maps', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    // Verify the list exists first (so a bad id fails fast, before the Apify run).
+    if (req.params.id !== 'unassigned') {
+      const list = await List.findById(req.params.id).lean()
+      if (!list)
+        return res.status(404).json({ success: false, error: 'List not found' })
+    }
+
+    const { query, maxResults } = req.body || {}
+    let result
+    try {
+      result = await fetchGoogleMapsLeads(query, maxResults)
+    } catch (err) {
+      // Config/validation/Apify failures — surface a clean 400 (not a 500 stack).
+      return res.status(400).json({ success: false, error: err.message })
+    }
+
+    const summary = await upsertLeadsIntoList(
+      result.rows,
+      req.params.id,
+      'maps',
+    )
+    if (result.rows.length) await bumpListSource(req.params.id, 'maps')
+    res.json({
+      success: true,
+      ...summary,
+      foundPlaces: result.foundPlaces,
+      withEmail: result.rows.length,
+    })
   } catch (err) {
     if (err.name === 'CastError')
       return res.status(404).json({ success: false, error: 'List not found' })
