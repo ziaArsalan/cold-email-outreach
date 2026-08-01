@@ -1,21 +1,42 @@
 import React from 'react'
+import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom'
 import './App.css'
 import LoginScreen from './components/LoginScreen'
 import { AppProvider, useApp } from './context/AppContext'
 import DashboardPage from './pages/DashboardPage'
 import LogsPage from './pages/LogsPage'
 import TemplatesPage from './pages/TemplatesPage'
+import TemplateForm from './pages/TemplateForm'
 import UpworkPage from './pages/UpworkPage'
 import SettingsPage from './pages/SettingsPage'
 import LeadsPage from './pages/LeadsPage'
 import PreviewPage from './pages/PreviewPage'
 import CampaignsPage from './pages/CampaignsPage'
+import CampaignForm from './pages/CampaignForm'
 
 export default function App() {
+  // BrowserRouter wraps the provider so context handlers (e.g. openPreview) can
+  // use router hooks like useNavigate.
   return (
-    <AppProvider>
-      <AppShell />
-    </AppProvider>
+    <BrowserRouter>
+      <AppProvider>
+        <AppShell />
+      </AppProvider>
+    </BrowserRouter>
+  )
+}
+
+// Sidebar link — active styling comes from NavLink's isActive.
+function NavItem({ to, icon, label, end, onClick }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={onClick}
+      className={({ isActive }) => (isActive ? 'nav-item active' : 'nav-item')}
+    >
+      <span className='nav-icon'>{icon}</span> {label}
+    </NavLink>
   )
 }
 
@@ -27,7 +48,6 @@ function AppShell() {
     setEmailModal,
     logs,
     tab,
-    setTab,
     navOpen,
     setNavOpen,
     smtpStatus,
@@ -38,20 +58,13 @@ function AppShell() {
     campaignView,
     setCampaignView,
     logout,
-    fetchLists,
     closeListView,
     saveLeadEmail,
     revertLeadEmail,
     regenerateLeadIntro,
-    fetchLogs,
-    fetchDashboardAll,
     sendTemplateTest,
-    fetchTemplates,
-    fetchCampaignsAll,
     testSmtp,
     sendEmail,
-    fetchUpworkAll,
-    fetchOutreachSettings,
     authed,
     setAuthed,
   } = useApp()
@@ -88,76 +101,25 @@ function AppShell() {
             <small>Outreach</small>
           </span>
         </div>
-        {/* Any nav click closes the mobile drawer (event bubbles up) */}
+        {/* Any nav click closes the mobile drawer (event bubbles up). Data for
+            each section loads via the route-driven effect in AppContext, so the
+            links only navigate. */}
         <nav onClick={() => setNavOpen(false)}>
-          <button
-            className={tab === 'dashboard' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setTab('dashboard')
-              fetchDashboardAll()
-            }}
-          >
-            <span className='nav-icon'>◈</span> Dashboard
-          </button>
-          <button
-            className={tab === 'leads' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setTab('leads')
-              closeListView()
-              fetchLists()
-            }}
-          >
-            <span className='nav-icon'>◉</span> Lists
-          </button>
-          <button
-            className={tab === 'campaigns' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setTab('campaigns')
-              fetchCampaignsAll()
-            }}
-          >
-            <span className='nav-icon'>◈</span> Campaigns
-          </button>
-          <button
-            className={tab === 'templates' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setTab('templates')
-              fetchTemplates()
-            }}
-          >
-            <span className='nav-icon'>▤</span> Templates
-          </button>
-          <button
-            className={tab === 'upwork' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setTab('upwork')
-              fetchUpworkAll()
-            }}
-          >
-            <span className='nav-icon'>◆</span> Upwork
-          </button>
-          <button
-            className={tab === 'settings' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setTab('settings')
-              fetchOutreachSettings()
-            }}
-          >
-            <span className='nav-icon'>◎</span> Settings
-          </button>
-          <button
-            className={tab === 'logs' ? 'nav-item active' : 'nav-item'}
-            onClick={() => {
-              setTab('logs')
-              fetchLogs()
-            }}
-          >
-            <span className='nav-icon'>▦</span> Logs
-          </button>
+          <NavItem to='/dashboard' icon='◈' label='Dashboard' />
+          {/* Lists also resets any open list-detail sub-view. */}
+          <NavItem
+            to='/leads'
+            icon='◉'
+            label='Lists'
+            onClick={closeListView}
+          />
+          <NavItem to='/campaigns' icon='◈' label='Campaigns' />
+          <NavItem to='/templates' icon='▤' label='Templates' />
+          <NavItem to='/upwork' icon='◆' label='Upwork' />
+          <NavItem to='/settings' icon='◎' label='Settings' />
+          <NavItem to='/logs' icon='▦' label='Logs' />
           {tab === 'preview' && (
-            <button className='nav-item active'>
-              <span className='nav-icon'>◌</span> Preview
-            </button>
+            <NavItem to='/preview' icon='◌' label='Preview' />
           )}
         </nav>
         <div className='sidebar-footer'>
@@ -176,31 +138,30 @@ function AppShell() {
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* Main Content — real URL routes. Campaigns and Templates each have a
+          list route plus nested new/edit form routes (separate components). */}
       <main className='main'>
-        {/* ── DASHBOARD TAB ── */}
-        {tab === 'dashboard' && <DashboardPage />}
+        <Routes>
+          <Route path='/' element={<Navigate to='/dashboard' replace />} />
+          <Route path='/dashboard' element={<DashboardPage />} />
+          <Route path='/leads' element={<LeadsPage />} />
 
-        {/* ── CAMPAIGNS TAB ── */}
-        {tab === 'campaigns' && <CampaignsPage />}
+          <Route path='/campaigns' element={<CampaignsPage />} />
+          <Route path='/campaigns/new' element={<CampaignForm />} />
+          <Route path='/campaigns/:id/edit' element={<CampaignForm />} />
 
-        {/* ── TEMPLATES TAB ── */}
-        {tab === 'templates' && <TemplatesPage />}
+          <Route path='/templates' element={<TemplatesPage />} />
+          <Route path='/templates/new' element={<TemplateForm />} />
+          <Route path='/templates/:id/edit' element={<TemplateForm />} />
 
-        {/* ── LISTS TAB (T-017) ── */}
-        {tab === 'leads' && <LeadsPage />}
+          <Route path='/preview' element={<PreviewPage />} />
+          <Route path='/upwork' element={<UpworkPage />} />
+          <Route path='/settings' element={<SettingsPage />} />
+          <Route path='/logs' element={<LogsPage />} />
 
-        {/* ── PREVIEW TAB ── */}
-        {tab === 'preview' && <PreviewPage />}
-
-        {/* ── UPWORK TAB ── */}
-        {tab === 'upwork' && <UpworkPage />}
-
-        {/* ── SETTINGS TAB ── */}
-        {tab === 'settings' && <SettingsPage />}
-
-        {/* ── LOGS TAB ── */}
-        {tab === 'logs' && <LogsPage />}
+          {/* Unknown paths fall back to the dashboard. */}
+          <Route path='*' element={<Navigate to='/dashboard' replace />} />
+        </Routes>
       </main>
 
       {/* ── Editable email modal (per-lead full body override) ── */}

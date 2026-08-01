@@ -1,14 +1,16 @@
 import React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { statusColor, EMAIL_SIGNATURE } from '../utils'
 
 export default function PreviewPage() {
-  const { previewLead, preview, previewLoading, sendEmail, setTab } = useApp()
+  const navigate = useNavigate()
+  const { previewLead, preview, previewLoading, sendEmail } = useApp()
 
   return (
           <div className='tab-content'>
             <div className='page-header'>
-              <button className='btn-ghost' onClick={() => setTab('leads')}>
+              <button className='btn-ghost' onClick={() => navigate('/leads')}>
                 ← Back to Leads
               </button>
               <h1>Email Preview</h1>

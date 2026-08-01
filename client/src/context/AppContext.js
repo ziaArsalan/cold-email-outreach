@@ -5,6 +5,7 @@ import React, {
   useEffect,
   useRef,
 } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import axios, { API, setUnauthorizedHandler } from '../api'
 import { BLANK_CAMPAIGN } from '../utils'
 
@@ -13,6 +14,8 @@ export const AppContext = createContext(null)
 export const useApp = () => useContext(AppContext)
 
 export function AppProvider({ children }) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [leads, setLeads] = useState([])
   // Lead lists (T-017)
   const [lists, setLists] = useState([])
@@ -628,11 +631,42 @@ export function AppProvider({ children }) {
     }
   }
 
-  // Load dashboard data once authenticated (fires after login, not just on
-  // mount — a pre-auth fetch would 401 and leave the dashboard empty).
+  // Route-driven data loading + tab sync. Runs on login and on every URL change,
+  // so a direct visit/refresh to any route loads that section's data (the old
+  // per-nav-click fetches are now keyed off the pathname instead). `tab` stays
+  // in sync for the effects that still read it (e.g. the dashboard poll below).
+  // The first path segment is the section; nested routes (e.g. /campaigns/new)
+  // resolve to their parent section so the parent's data is loaded for the form.
   useEffect(() => {
-    if (authed && tab === 'dashboard') fetchDashboardAll()
-  }, [authed])
+    if (!authed) return
+    const seg = location.pathname.split('/')[1] || 'dashboard'
+    setTab(seg)
+    switch (seg) {
+      case 'dashboard':
+        fetchDashboardAll()
+        break
+      case 'leads':
+        fetchLists()
+        break
+      case 'campaigns':
+        fetchCampaignsAll()
+        break
+      case 'templates':
+        fetchTemplates()
+        break
+      case 'upwork':
+        fetchUpworkAll()
+        break
+      case 'settings':
+        fetchOutreachSettings()
+        break
+      case 'logs':
+        fetchLogs()
+        break
+      default:
+        break
+    }
+  }, [authed, location.pathname])
 
   // Keep the dashboard live — refresh the queue activity + mailbox health every
   // 15s while it's open, so "sending / next / sent" reflects reality.
@@ -824,11 +858,13 @@ export function AppProvider({ children }) {
       }
       closeTemplateForm()
       await fetchTemplates()
+      return true
     } catch (err) {
       alert(
         'Failed to save template: ' +
           (err.response?.data?.error || err.message),
       )
+      return false
     } finally {
       setTemplateBusy(false)
     }
@@ -983,11 +1019,13 @@ export function AppProvider({ children }) {
       setNewCampaign(BLANK_CAMPAIGN)
       setEditingCampaignId(null)
       await fetchCampaigns()
+      return true
     } catch (err) {
       alert(
         `Failed to ${editingCampaignId ? 'save' : 'create'} campaign: ` +
           (err.response?.data?.error || err.message),
       )
+      return false
     } finally {
       setCampaignBusy(false)
     }
@@ -1023,7 +1061,6 @@ export function AppProvider({ children }) {
       startTime: (c.schedule && c.schedule.startTime) || '09:00',
       endTime: (c.schedule && c.schedule.endTime) || '17:00',
     })
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' })
   }
 
   const cancelEditCampaign = () => {
@@ -1209,7 +1246,7 @@ export function AppProvider({ children }) {
     setPreviewLead(lead)
     setPreview(null)
     setPreviewLoading(true)
-    setTab('preview')
+    navigate('/preview')
     try {
       const { data } = await axios.post(`${API}/preview`, { lead })
       setPreview({ ...data.email, cached: data.cached })

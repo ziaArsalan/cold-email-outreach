@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-026] Real URL routing; campaign/template forms as nested routes
+- priority: P2
+- status: done
+- area: client
+- description: Replace the `tab`-state shell with react-router real URLs and move the campaign & template create/edit forms out of their listing screens into nested routes (`/campaigns/new`, `/campaigns/:id/edit`, `/templates/new`, `/templates/:id/edit`) as their own component files (`CampaignForm.js`, `TemplateForm.js`). Sidebar uses NavLink; section data loads via a route-driven effect in AppContext (direct/refresh loads work; SPA fallback already present). Lists/forms trimmed accordingly; forms navigate back to the list on save/cancel.
+- acceptance:
+  - [x] `/campaigns` and `/templates` are list-only; New/Edit open dedicated form routes in separate component files
+  - [x] Edit routes load the entity; hard-refresh on a deep form URL works; save redirects back to the list
+  - [x] Sidebar highlights the parent tab on nested routes; clean CI build; no new console errors
+
 ## [T-025] Copy a campaign to another list
 - priority: P2
 - status: done
