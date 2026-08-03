@@ -939,11 +939,13 @@ export function AppProvider({ children }) {
       templateId: t._id,
       templateName: t.name,
       listId: '',
+      mailboxId: '', // '' = default (first active); pick one to test its placement
       sending: false,
       result: null,
       history: [],
     })
     if (!lists.length) fetchLists()
+    if (!mailboxes.length) fetchMailboxes()
     loadTemplateTestHistory(t._id)
   }
 
@@ -967,11 +969,13 @@ export function AppProvider({ children }) {
       templateTest.listId === 'unassigned'
         ? '(unassigned)'
         : (list && list.leadCount) || '?'
+    const mb = mailboxes.find((m) => m._id === templateTest.mailboxId)
+    const fromLabel = mb ? mb.email : 'the default mailbox'
     if (
       !window.confirm(
         `Send the REAL template email to all ${count} lead(s) in "${
           list ? list.name : 'Unassigned'
-        }"? These are actual sends (use your tester list).`,
+        }" from ${fromLabel}? These are actual sends (use your tester list).`,
       )
     )
       return
@@ -979,7 +983,10 @@ export function AppProvider({ children }) {
     try {
       const { data } = await axios.post(
         `${API}/templates/${templateTest.templateId}/test`,
-        { listId: templateTest.listId },
+        {
+          listId: templateTest.listId,
+          mailboxId: templateTest.mailboxId || undefined,
+        },
       )
       setTemplateTest((s) => ({
         ...s,

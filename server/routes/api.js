@@ -702,11 +702,28 @@ router.post('/templates/:id/test', async (req, res) => {
       .status(503)
       .json({ success: false, error: 'Database unavailable' })
   try {
-    const { listId } = req.body || {}
+    const { listId, mailboxId } = req.body || {}
     if (!listId)
       return res
         .status(400)
         .json({ success: false, error: 'listId is required' })
+
+    // Optional: send the test FROM a specific mailbox (placement testing). Load
+    // its address so the opt-out headers reflect the real sender; the send itself
+    // is routed to this mailbox via sendEmail({ mailboxId }).
+    let fromEmail = process.env.FROM_EMAIL
+    if (mailboxId) {
+      if (!mongoose.Types.ObjectId.isValid(mailboxId))
+        return res
+          .status(400)
+          .json({ success: false, error: 'Invalid mailboxId' })
+      const mb = await Mailbox.findById(mailboxId).select('email').lean()
+      if (!mb)
+        return res
+          .status(404)
+          .json({ success: false, error: 'Mailbox not found' })
+      fromEmail = mb.email
+    }
 
     let template
     try {
@@ -772,10 +789,8 @@ router.post('/templates/:id/test', async (req, res) => {
           to: lead.email,
           subject,
           body,
-          headers: unsubscribeService.headersFor(
-            lead._id,
-            process.env.FROM_EMAIL,
-          ),
+          mailboxId,
+          headers: unsubscribeService.headersFor(lead._id, fromEmail),
         })
         sent += 1
         results.push({ email: lead.email, ok: true })

@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-033] Choose sender mailbox in Template Test (placement testing)
+- priority: P2
+- status: done
+- area: both
+- description: Let the Template Test send from a chosen mailbox so a specific (new) mailbox's inbox/spam placement can be tested against a seed list. Add a "Send from mailbox" dropdown to the test modal; thread mailboxId through POST /templates/:id/test → emailService.sendEmail → resolveMailbox; opt-out headers use the chosen sender. Also clear the accidental unsubscribed status on the seed lead app.loyalideas@gmail.com.
+- acceptance:
+  - [x] Template Test modal has a sender-mailbox select (mailboxes + default); test sends from the picked mailbox
+  - [x] Server validates mailboxId (400/404) before sending; headers reflect the chosen sender
+  - [x] app.loyalideas@gmail.com is no longer unsubscribed; server + client build clean; verified in a real browser
+
 ## [T-032] Sticky mailbox across a lead's follow-up sequence
 - priority: P2
 - status: done

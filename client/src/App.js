@@ -44,6 +44,7 @@ function AppShell() {
   const {
     leads,
     lists,
+    mailboxes,
     emailModal,
     setEmailModal,
     logs,
@@ -293,6 +294,29 @@ function AppShell() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div
+              className='control-group'
+              style={{ marginBottom: '0.9rem', maxWidth: 360 }}
+            >
+              <label>Send from mailbox</label>
+              <select
+                value={templateTest.mailboxId}
+                onChange={(e) =>
+                  setTemplateTest((s) => ({ ...s, mailboxId: e.target.value }))
+                }
+              >
+                <option value=''>Default (first active mailbox)</option>
+                {mailboxes.map((m) => (
+                  <option key={m._id} value={m._id}>
+                    {m.email}
+                    {m.provider ? ` · ${m.provider}` : ''}
+                  </option>
+                ))}
+              </select>
+              <span className='field-note'>
+                Pick a specific mailbox to check its inbox/spam placement.
+              </span>
             </div>
             {templateTest.result && (
               <p
