@@ -195,7 +195,16 @@ const processOne = async (deps = {}) => {
           const when = new Date(
             sentAt.getTime() + steps[next].delayDays * config.followupDelayUnitMs,
           )
-          await campaignService.enqueueStepForLead(campaign, lead, next, when)
+          // Sticky sender: pin every follow-up to the mailbox that just sent, so
+          // a lead first contacted by zia@ keeps getting the whole sequence from
+          // zia@ (rotation only chooses the sender for the FIRST touch, step 0).
+          await campaignService.enqueueStepForLead(
+            campaign,
+            lead,
+            next,
+            when,
+            mailbox._id,
+          )
         }
       } catch (_) {}
 

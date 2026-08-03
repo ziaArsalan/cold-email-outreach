@@ -103,13 +103,20 @@ const prepareSendContent = async (campaign, lead, item) => {
   return renderStep(campaign, lead, stepIndex)
 }
 
-const enqueueStepForLead = async (campaign, lead, stepIndex, scheduledAt) => {
+const enqueueStepForLead = async (
+  campaign,
+  lead,
+  stepIndex,
+  scheduledAt,
+  mailboxId, // optional — pins this step to a mailbox (sticky follow-ups)
+) => {
   // Store a best-effort rendering now (the live-queue preview); the worker
   // re-renders with a freshly generated intro at send time.
   const { subject, body } = await renderStep(campaign, lead, stepIndex)
   return enqueue({
     campaignId: campaign._id,
     leadId: lead._id,
+    mailboxId,
     subject,
     body,
     stepIndex,

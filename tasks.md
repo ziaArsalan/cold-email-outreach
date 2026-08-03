@@ -27,6 +27,17 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-032] Sticky mailbox across a lead's follow-up sequence
+- priority: P2
+- status: done
+- area: server
+- description: Keep a lead's whole sequence on one sender. Rotation (LRU across campaign.mailboxIds) chooses the sender only for the initial email (step 0); follow-ups are pinned to the mailbox that sent step 0 via QueuedEmail.mailboxId (carried forward each step). Also add both mailboxes (zia@, sarah@) to existing campaigns so the first touch rotates.
+- acceptance:
+  - [x] Follow-ups send from the same mailbox that sent the lead's first email
+  - [x] Step 0 still rotates across the campaign's mailboxes; a pinned-but-capped mailbox makes the follow-up wait (no sender switch)
+  - [x] Existing campaigns list 2 mailboxes; worker + service load clean
+- notes: infra (QueuedEmail.mailboxId + worker item.mailboxId pin) already existed; wired into follow-up scheduling.
+
 ## [T-031] Mailbox provider selector (SMTP / Brevo API)
 - priority: P1
 - status: done
