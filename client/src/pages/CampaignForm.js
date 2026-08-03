@@ -3,6 +3,22 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { WEEKDAYS } from '../utils'
 
+// Full IANA timezone list where the browser exposes it, with a small curated
+// fallback for older engines. The send-window schedule is evaluated in the
+// chosen zone (see server isWithinWindow), not the server's UTC clock.
+const TIMEZONES =
+  typeof Intl.supportedValuesOf === 'function'
+    ? Intl.supportedValuesOf('timeZone')
+    : [
+        'UTC',
+        'Asia/Karachi',
+        'Asia/Dubai',
+        'Asia/Riyadh',
+        'Europe/London',
+        'America/New_York',
+        'America/Los_Angeles',
+      ]
+
 // New / edit campaign form — a nested route (/campaigns/new, /campaigns/:id/edit)
 // off the Campaigns list. On an edit route it loads the target campaign into the
 // shared form state; on the new route it resets to a blank form. Saving returns
@@ -290,6 +306,26 @@ export default function CampaignForm() {
                     }))
                   }
                 />
+              </div>
+              <div className='control-group full-width'>
+                <label>Timezone</label>
+                <select
+                  value={newCampaign.timezone || 'UTC'}
+                  onChange={(e) =>
+                    setNewCampaign((c) => ({ ...c, timezone: e.target.value }))
+                  }
+                >
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz} value={tz}>
+                      {tz}
+                    </option>
+                  ))}
+                </select>
+                <span className='field-note'>
+                  The schedule days and times above are interpreted in this
+                  timezone (defaults to your browser's). Sending pauses outside
+                  the window.
+                </span>
               </div>
             </div>
             <div

@@ -122,6 +122,12 @@ export const BLANK_CAMPAIGN = {
   days: ['mon', 'tue', 'wed', 'thu', 'fri'],
   startTime: '09:00',
   endTime: '17:00',
+  // Send-window timezone. Defaults to the browser's zone so the schedule the
+  // user picks means THEIR local time, not the server's (which is UTC in prod).
+  timezone:
+    (typeof Intl !== 'undefined' &&
+      Intl.DateTimeFormat().resolvedOptions().timeZone) ||
+    'UTC',
 }
 
 export const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -149,7 +155,8 @@ export const scheduleSummary = (schedule) => {
     schedule.startTime && schedule.endTime
       ? `${schedule.startTime}–${schedule.endTime}`
       : 'any time'
-  return `${dayPart} · ${timePart}`
+  const tzPart = schedule.timezone ? ` ${schedule.timezone}` : ''
+  return `${dayPart} · ${timePart}${tzPart}`
 }
 
 // Compact local date-time for queue/mailbox tables; em dash when absent.

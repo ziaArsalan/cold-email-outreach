@@ -1030,6 +1030,7 @@ export function AppProvider({ children }) {
           days: newCampaign.days,
           startTime: newCampaign.startTime,
           endTime: newCampaign.endTime,
+          timezone: newCampaign.timezone,
         },
       }
       if (newCampaign.listId) payload.listId = newCampaign.listId
@@ -1096,6 +1097,13 @@ export function AppProvider({ children }) {
       ],
       startTime: (c.schedule && c.schedule.startTime) || '09:00',
       endTime: (c.schedule && c.schedule.endTime) || '17:00',
+      // Older campaigns have no saved timezone — fall back to the browser's so
+      // the (now timezone-aware) window still matches the user's local hours.
+      timezone:
+        (c.schedule && c.schedule.timezone) ||
+        (typeof Intl !== 'undefined' &&
+          Intl.DateTimeFormat().resolvedOptions().timeZone) ||
+        'UTC',
     })
   }
 

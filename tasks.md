@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-030] Timezone-aware campaign send window
+- priority: P1
+- status: done
+- area: both
+- description: Evaluate a campaign's send-window schedule in the campaign's chosen timezone instead of the server clock (UTC), which was pausing campaigns for hours (e.g. 09:00–23:00 applied as UTC for a UTC+5 user). Make isWithinWindow timezone-aware via Intl; add a Timezone picker to the campaign form (default browser zone); persist schedule.timezone; show it in the schedule summary. Fallback to server-local when unset/invalid.
+- acceptance:
+  - [x] Send window is judged in schedule.timezone (verified: 06:40Z is out-of-window for UTC but in-window for Asia/Karachi 09:00–23:00)
+  - [x] Campaign form has a Timezone select defaulting to the browser zone; schedule summary shows the tz
+  - [x] Invalid/missing timezone falls back safely; server + client build clean
+
 ## [T-029] Sortable dashboard Live Queue
 - priority: P2
 - status: done

@@ -326,19 +326,45 @@ const remove = async (id) => {
 // Whether `now` falls inside the campaign's send window. No schedule → always
 // open. days: three-letter lowercase (['mon'..'sun']); empty days = every day.
 // Time window is [startTime, endTime); supports overnight (end < start).
+// Resolve the weekday + minutes-since-midnight for `now` AS SEEN in a given IANA
+// timezone (e.g. 'Asia/Karachi'). The schedule the user picks is in THEIR
+// timezone, not the server's — evaluating with the raw Date (server local /
+// UTC) is the bug that pauses campaigns for hours. Falls back to server-local
+// time when no/invalid timezone is set, preserving the old behaviour.
+const zonedDayAndMinutes = (now, timeZone) => {
+  if (!timeZone)
+    return { day: DAYS[now.getDay()], minutes: now.getHours() * 60 + now.getMinutes() }
+  try {
+    const parts = {}
+    for (const p of new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(now))
+      parts[p.type] = p.value
+    const day = parts.weekday.toLowerCase() // 'Mon' -> 'mon'
+    const hour = parseInt(parts.hour, 10) % 24 // some envs emit '24' at midnight
+    return { day, minutes: hour * 60 + parseInt(parts.minute, 10) }
+  } catch {
+    // Unknown/invalid timezone id — degrade to server-local rather than throw.
+    return { day: DAYS[now.getDay()], minutes: now.getHours() * 60 + now.getMinutes() }
+  }
+}
+
 const isWithinWindow = (campaign, now = new Date()) => {
   const schedule = campaign.schedule || {}
-  const { days, startTime, endTime } = schedule
+  const { days, startTime, endTime, timezone } = schedule
   const hasDays = Array.isArray(days) && days.length
   if (!hasDays && !startTime && !endTime) return true
 
-  if (hasDays) {
-    const today = DAYS[now.getDay()]
-    if (!days.includes(today)) return false
-  }
+  // Evaluate the window in the campaign's chosen timezone, not the server's.
+  const { day, minutes: nowMin } = zonedDayAndMinutes(now, timezone)
+
+  if (hasDays && !days.includes(day)) return false
 
   if (startTime && endTime) {
-    const nowMin = now.getHours() * 60 + now.getMinutes()
     const toMin = (t) => {
       const [h, m] = t.split(':').map(Number)
       return h * 60 + m
