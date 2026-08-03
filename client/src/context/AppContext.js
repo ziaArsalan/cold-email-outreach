@@ -719,6 +719,7 @@ export function AppProvider({ children }) {
   const BLANK_MAILBOX = {
     name: '',
     email: '',
+    signature: '',
     provider: 'smtp',
     apiKey: '',
     host: '',
@@ -751,6 +752,7 @@ export function AppProvider({ children }) {
       _id: mb._id,
       name: mb.name || '',
       email: mb.email || '',
+      signature: mb.signature || '',
       provider: mb.provider || 'smtp',
       apiKey: '', // never prefilled — blank means "keep existing"
       host: mb.host || '',
@@ -781,6 +783,7 @@ export function AppProvider({ children }) {
       const payload = {
         name: mailboxForm.name,
         email: mailboxForm.email,
+        signature: mailboxForm.signature || '',
         provider: mailboxForm.provider || 'smtp',
         dailyLimit: Number(mailboxForm.dailyLimit),
         hourlyLimit: Number(mailboxForm.hourlyLimit),

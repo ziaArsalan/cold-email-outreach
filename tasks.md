@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-034] Per-mailbox email signature
+- priority: P2
+- status: done
+- area: both
+- description: Give each mailbox its own signature so emails are signed as the actual sender instead of a single shared signature. Add Mailbox.signature; at send time renderStep appends the sending mailbox's signature (falling back to the template's when blank). Add a Signature field to the mailbox form; the Template Test uses the chosen mailbox's signature.
+- acceptance:
+  - [x] Mailbox form has a Signature field; sends from a mailbox use that mailbox's signature
+  - [x] Falls back to the template signature when a mailbox has none; preview/enqueue paths unaffected
+  - [x] Server persists signature (PUT round-trip); precedence unit-tested; server + client build clean
+
 ## [T-033] Choose sender mailbox in Template Test (placement testing)
 - priority: P2
 - status: done

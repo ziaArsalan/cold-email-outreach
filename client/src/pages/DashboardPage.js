@@ -327,6 +327,26 @@ export default function DashboardPage() {
                   </div>
                   </>
                   )}
+                  <div className='control-group full-width'>
+                    <label>Signature</label>
+                    <textarea
+                      rows={4}
+                      value={mailboxForm.signature}
+                      onChange={(e) =>
+                        setMailboxForm((f) => ({
+                          ...f,
+                          signature: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        'Best,\nSarah\nDevtronics · +1 555 123 4567\nhttps://meetdevtronics.com'
+                      }
+                    />
+                    <span className='field-note'>
+                      Appended to every email sent from THIS mailbox (overrides the
+                      template signature). Keep it to one link for deliverability.
+                    </span>
+                  </div>
                   <div className='control-group'>
                     <label>Daily Limit</label>
                     <input

@@ -712,17 +712,19 @@ router.post('/templates/:id/test', async (req, res) => {
     // its address so the opt-out headers reflect the real sender; the send itself
     // is routed to this mailbox via sendEmail({ mailboxId }).
     let fromEmail = process.env.FROM_EMAIL
+    let mailboxSignature = null
     if (mailboxId) {
       if (!mongoose.Types.ObjectId.isValid(mailboxId))
         return res
           .status(400)
           .json({ success: false, error: 'Invalid mailboxId' })
-      const mb = await Mailbox.findById(mailboxId).select('email').lean()
+      const mb = await Mailbox.findById(mailboxId).select('email signature').lean()
       if (!mb)
         return res
           .status(404)
           .json({ success: false, error: 'Mailbox not found' })
       fromEmail = mb.email
+      if (mb.signature && mb.signature.trim()) mailboxSignature = mb.signature
     }
 
     let template
@@ -779,7 +781,10 @@ router.post('/templates/:id/test', async (req, res) => {
       }
       const subject = render(template.subject, vars)
       let body = render(template.body, vars)
-      if (template.signature) body += '\n\n' + render(template.signature, vars)
+      // Prefer the chosen mailbox's signature (so a placement test reflects what
+      // that sender actually appends), falling back to the template's.
+      const sig = mailboxSignature || template.signature
+      if (sig) body += '\n\n' + render(sig, vars)
       // Same opt-out footer + headers a real campaign send would carry, so the
       // test shows exactly what a lead receives.
       body += unsubscribeService.footerFor(lead._id)
@@ -1277,6 +1282,8 @@ const validateMailbox = (body, partial) => {
     if (!req(body.name)) return 'name must be a non-empty string'
   if (!partial || body.email !== undefined)
     if (!req(body.email)) return 'email must be a non-empty string'
+  if (body.signature !== undefined && typeof body.signature !== 'string')
+    return 'signature must be a string'
   if (body.provider !== undefined && !MAILBOX_PROVIDERS.includes(body.provider))
     return `provider must be one of: ${MAILBOX_PROVIDERS.join(', ')}`
 
@@ -1366,6 +1373,7 @@ router.put('/mailboxes/:id', async (req, res) => {
     const fields = [
       'name',
       'email',
+      'signature',
       'provider',
       'host',
       'port',

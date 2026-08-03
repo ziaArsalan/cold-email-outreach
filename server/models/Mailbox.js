@@ -5,6 +5,10 @@ const mailboxSchema = new mongoose.Schema(
   {
     name: String,
     email: String,
+    // Per-mailbox email signature. When set, it's appended to sends FROM this
+    // mailbox instead of the template's signature (see campaignService.renderStep),
+    // so each sender can have its own sign-off. Falls back to the template's when blank.
+    signature: String,
     provider: {
       type: String,
       enum: ['smtp', 'brevo', 'gmail', 'm365', 'mailgun', 'ses', 'resend'],

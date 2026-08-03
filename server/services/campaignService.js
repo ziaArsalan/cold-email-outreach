@@ -43,7 +43,7 @@ const normalizeSteps = (campaign) => {
 // call here — step 0's start() already primes it). scheduledAt null = immediate.
 // Render one step's subject/body for a lead from the step template + the lead's
 // (possibly cached) aiIntro. Pure of AI calls — see ensureIntro for that.
-const renderStep = async (campaign, lead, stepIndex) => {
+const renderStep = async (campaign, lead, stepIndex, mailbox) => {
   const step = normalizeSteps(campaign)[stepIndex]
   const template = await Template.findById(step.templateId)
   if (!template) throw badRequest(`Step ${stepIndex + 1} template not found`)
@@ -58,7 +58,14 @@ const renderStep = async (campaign, lead, stepIndex) => {
   }
   const renderedSubject = render(template.subject, vars)
   let body = render(template.body, vars)
-  if (template.signature) body += '\n\n' + render(template.signature, vars)
+  // Signature is per-SENDER: use the sending mailbox's signature when it has one,
+  // else fall back to the template's. mailbox is known at send time (the worker
+  // picks it before rendering); preview/enqueue paths pass none → template sig.
+  const signature =
+    mailbox && typeof mailbox.signature === 'string' && mailbox.signature.trim()
+      ? mailbox.signature
+      : template.signature
+  if (signature) body += '\n\n' + render(signature, vars)
   let subject = renderedSubject
 
   // Per-lead full body override — initial email (step 0) only. When set, send the
@@ -97,10 +104,10 @@ const ensureIntro = async (lead, campaign) => {
 // lazily (one email at a time) then renders the step fresh. This is why campaign
 // start is instant and never fails on a transient AI outage — the AI work is
 // spread across the drain, not done in a burst up front.
-const prepareSendContent = async (campaign, lead, item) => {
+const prepareSendContent = async (campaign, lead, item, mailbox) => {
   const stepIndex = item.stepIndex || 0
   if (!hasManualOverride(lead, stepIndex)) await ensureIntro(lead, campaign)
-  return renderStep(campaign, lead, stepIndex)
+  return renderStep(campaign, lead, stepIndex, mailbox)
 }
 
 const enqueueStepForLead = async (

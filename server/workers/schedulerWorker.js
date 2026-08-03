@@ -133,7 +133,12 @@ const processOne = async (deps = {}) => {
     let content = { subject: item.subject, body: item.body }
     if (campaign) {
       try {
-        content = await campaignService.prepareSendContent(campaign, lead, item)
+        content = await campaignService.prepareSendContent(
+          campaign,
+          lead,
+          item,
+          mailbox,
+        )
       } catch (err) {
         await reschedule(item, {
           delayMs: config.retry.backoffBaseMs * 2 ** Math.min(item.retries, 4),
