@@ -472,6 +472,33 @@ thead th {
   color: var(--muted);
   border-bottom: 1px solid var(--border);
 }
+/* Sortable column header button (Live Queue) */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+.th-sort:hover {
+  color: var(--text);
+}
+.sort-caret {
+  font-size: 9px;
+  opacity: 0.35;
+  line-height: 1;
+}
+.sort-caret.active {
+  opacity: 1;
+  color: var(--accent, #6366f1);
+}
 tbody td {
   padding: 0.65rem 0.75rem;
   border-bottom: 1px solid rgba(30, 35, 48, 0.6);

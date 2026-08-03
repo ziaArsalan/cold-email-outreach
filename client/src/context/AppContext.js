@@ -110,6 +110,9 @@ export function AppProvider({ children }) {
   const [queue, setQueue] = useState({ items: [], total: 0, page: 1, pages: 1 })
   const [queueStatus, setQueueStatus] = useState('')
   const [queuePage, setQueuePage] = useState(1)
+  // Live Queue sort — server-side (the table is paginated, so a client sort would
+  // only reorder the visible page). Whitelisted fields mirror the API.
+  const [queueSort, setQueueSort] = useState({ field: 'createdAt', dir: 'desc' })
 
   // Mailbox management (add/edit/test/pause)
   const [mailboxForm, setMailboxForm] = useState(null) // null = closed; {} = new; {...mb} = editing
@@ -606,10 +609,14 @@ export function AppProvider({ children }) {
     } catch (e) {}
   }
 
-  const fetchQueue = async (status = queueStatus, page = queuePage) => {
+  const fetchQueue = async (
+    status = queueStatus,
+    page = queuePage,
+    sort = queueSort,
+  ) => {
     try {
       const { data } = await axios.get(
-        `${API}/queue?status=${status}&page=${page}&limit=25`,
+        `${API}/queue?status=${status}&page=${page}&limit=25&sort=${sort.field}&dir=${sort.dir}`,
       )
       setQueue({
         items: data.items || [],
@@ -618,6 +625,18 @@ export function AppProvider({ children }) {
         pages: data.pages || 1,
       })
     } catch (e) {}
+  }
+
+  // Toggle sort on a Live Queue column: same field flips direction, a new field
+  // starts descending. Resets to page 1 and refetches (sort is server-side).
+  const sortQueue = (field) => {
+    const next =
+      queueSort.field === field
+        ? { field, dir: queueSort.dir === 'asc' ? 'desc' : 'asc' }
+        : { field, dir: 'desc' }
+    setQueueSort(next)
+    setQueuePage(1)
+    fetchQueue(queueStatus, 1, next)
   }
 
   const fetchQueueActivity = async () => {
@@ -1556,6 +1575,8 @@ export function AppProvider({ children }) {
         setQueueStatus,
         queuePage,
         setQueuePage,
+        queueSort,
+        sortQueue,
         mailboxForm,
         setMailboxForm,
         mailboxBusy,

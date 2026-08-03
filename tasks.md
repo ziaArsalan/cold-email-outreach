@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-029] Sortable dashboard Live Queue
+- priority: P2
+- status: done
+- area: both
+- description: Add clickable column sorting to the dashboard Live Queue table (Step, Status, Scheduled, Sent). Server-side sort (the table is paginated) via `GET /api/queue?sort=&dir=` with a whitelist + safe fallback; caret indicator on the active column; toggles desc→asc; resets to page 1.
+- acceptance:
+  - [x] Clicking Step/Status/Scheduled/Sent headers sorts the whole queue (not just the visible page) and toggles asc/desc with a caret
+  - [x] Sort is server-side, whitelisted (bad input falls back safely); server + client build clean
+  - [x] Verified in a real browser: table reorders and caret reflects field + direction
+
 ## [T-028] Duplicate-email detection on lead upload
 - priority: P2
 - status: done

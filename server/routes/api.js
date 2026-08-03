@@ -1911,6 +1911,14 @@ router.get('/queue', async (req, res) => {
     const filter = QUEUE_STATUSES.includes(req.query.status)
       ? { status: req.query.status }
       : {}
+
+    // Sorting — whitelist real QueuedEmail fields (populated lead/campaign names
+    // aren't sortable in a plain find). Default: newest first. A stable _id tie-
+    // breaker keeps pagination consistent when the sort key repeats.
+    const SORTABLE = ['createdAt', 'scheduledAt', 'sentAt', 'status', 'stepIndex']
+    const sortField = SORTABLE.includes(req.query.sort) ? req.query.sort : 'createdAt'
+    const sortDir = req.query.dir === 'asc' ? 1 : -1
+    const sort = { [sortField]: sortDir, _id: sortDir }
     // Optional per-campaign filter (used by the campaign View modal).
     if (req.query.campaignId) {
       if (!mongoose.Types.ObjectId.isValid(req.query.campaignId))
@@ -1922,7 +1930,7 @@ router.get('/queue', async (req, res) => {
 
     const [docs, total] = await Promise.all([
       QueuedEmail.find(filter)
-        .sort({ createdAt: -1 })
+        .sort(sort)
         .skip((page - 1) * limit)
         .limit(limit)
         .populate('leadId', 'email')

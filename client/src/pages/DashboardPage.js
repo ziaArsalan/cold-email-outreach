@@ -15,6 +15,8 @@ export default function DashboardPage() {
     setQueueStatus,
     queuePage,
     setQueuePage,
+    queueSort,
+    sortQueue,
     toggleMailboxPause,
     fetchDashboardAll,
     openNewMailboxForm,
@@ -26,6 +28,28 @@ export default function DashboardPage() {
     fetchQueue,
     markLead,
   } = useApp()
+
+  // Sortable Live Queue column header: click to sort, click again to flip. The
+  // caret shows the active field/direction (populated Lead/Campaign columns are
+  // not server-sortable, so they stay plain headers).
+  const SortTh = ({ field, children }) => {
+    const active = queueSort.field === field
+    return (
+      <th>
+        <button
+          type='button'
+          className='th-sort'
+          onClick={() => sortQueue(field)}
+          aria-label={`Sort by ${field}`}
+        >
+          {children}
+          <span className={active ? 'sort-caret active' : 'sort-caret'}>
+            {active ? (queueSort.dir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </button>
+      </th>
+    )
+  }
 
   return (
     <div className='tab-content'>
@@ -630,10 +654,10 @@ export default function DashboardPage() {
                 <tr>
                   <th>Lead</th>
                   <th>Campaign</th>
-                  <th>Step</th>
-                  <th>Status</th>
-                  <th>Scheduled</th>
-                  <th>Sent</th>
+                  <SortTh field='stepIndex'>Step</SortTh>
+                  <SortTh field='status'>Status</SortTh>
+                  <SortTh field='scheduledAt'>Scheduled</SortTh>
+                  <SortTh field='sentAt'>Sent</SortTh>
                   <th>Error</th>
                   <th>Actions</th>
                 </tr>
