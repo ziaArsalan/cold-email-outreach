@@ -1251,7 +1251,9 @@ router.get('/logs', async (req, res) => {
 
 // ── Mailboxes (Mongo-backed sending accounts) ──
 
-const MAILBOX_PROVIDERS = ['smtp', 'gmail', 'm365', 'mailgun', 'ses', 'resend']
+const MAILBOX_PROVIDERS = ['smtp', 'brevo', 'gmail', 'm365', 'mailgun', 'ses', 'resend']
+// HTTP-API providers authenticate with an API key, not SMTP host/user/pass.
+const API_PROVIDERS = ['brevo']
 
 // Validate mailbox fields. `partial` = update mode (all fields optional).
 const validateMailbox = (body, partial) => {
@@ -1260,25 +1262,34 @@ const validateMailbox = (body, partial) => {
     if (!req(body.name)) return 'name must be a non-empty string'
   if (!partial || body.email !== undefined)
     if (!req(body.email)) return 'email must be a non-empty string'
-  if (!partial || body.host !== undefined)
-    if (!req(body.host)) return 'host must be a non-empty string'
-  if (!partial || body.username !== undefined)
-    if (!req(body.username)) return 'username must be a non-empty string'
-  if (!partial) {
-    if (!req(body.password)) return 'password must be a non-empty string'
-  } else if (body.password !== undefined && typeof body.password !== 'string') {
-    return 'password must be a string'
+  if (body.provider !== undefined && !MAILBOX_PROVIDERS.includes(body.provider))
+    return `provider must be one of: ${MAILBOX_PROVIDERS.join(', ')}`
+
+  // API-key providers (e.g. Brevo) don't need SMTP host/username/password —
+  // they send over HTTPS. The key is optional here (falls back to an env key).
+  const isApi = API_PROVIDERS.includes(body.provider)
+  if (isApi) {
+    if (body.apiKey !== undefined && typeof body.apiKey !== 'string')
+      return 'apiKey must be a string'
+  } else {
+    if (!partial || body.host !== undefined)
+      if (!req(body.host)) return 'host must be a non-empty string'
+    if (!partial || body.username !== undefined)
+      if (!req(body.username)) return 'username must be a non-empty string'
+    if (!partial) {
+      if (!req(body.password)) return 'password must be a non-empty string'
+    } else if (body.password !== undefined && typeof body.password !== 'string') {
+      return 'password must be a string'
+    }
+    if (!partial || body.port !== undefined)
+      if (typeof body.port !== 'number') return 'port must be a number'
   }
-  if (!partial || body.port !== undefined)
-    if (typeof body.port !== 'number') return 'port must be a number'
   if (body.secure !== undefined && typeof body.secure !== 'boolean')
     return 'secure must be a boolean'
   if (body.warmupEnabled !== undefined && typeof body.warmupEnabled !== 'boolean')
     return 'warmupEnabled must be a boolean'
   if (body.active !== undefined && typeof body.active !== 'boolean')
     return 'active must be a boolean'
-  if (body.provider !== undefined && !MAILBOX_PROVIDERS.includes(body.provider))
-    return `provider must be one of: ${MAILBOX_PROVIDERS.join(', ')}`
   if (
     body.dailyLimit !== undefined &&
     (typeof body.dailyLimit !== 'number' || body.dailyLimit <= 0)
@@ -1352,9 +1363,12 @@ router.put('/mailboxes/:id', async (req, res) => {
       'active',
     ]
     for (const f of fields) if (body[f] !== undefined) updates[f] = body[f]
-    // Only touch the password when a non-empty new value is supplied.
+    // Only touch the secret fields when a non-empty new value is supplied — a
+    // blank field on edit means "keep the existing one" (never overwrite with '').
     if (typeof body.password === 'string' && body.password.trim())
       updates.password = body.password
+    if (typeof body.apiKey === 'string' && body.apiKey.trim())
+      updates.apiKey = body.apiKey
 
     const doc = await Mailbox.findByIdAndUpdate(req.params.id, updates, {
       new: true,
@@ -1383,7 +1397,7 @@ router.post('/mailboxes/:id/test', async (req, res) => {
   try {
     let mailbox
     try {
-      mailbox = await Mailbox.findById(req.params.id).select('+password')
+      mailbox = await Mailbox.findById(req.params.id).select('+password +apiKey')
     } catch (err) {
       if (err.name === 'CastError')
         return res

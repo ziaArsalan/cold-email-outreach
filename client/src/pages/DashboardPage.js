@@ -202,6 +202,51 @@ export default function DashboardPage() {
                     />
                   </div>
                   <div className='control-group'>
+                    <label>Provider</label>
+                    <select
+                      value={mailboxForm.provider || 'smtp'}
+                      onChange={(e) =>
+                        setMailboxForm((f) => ({
+                          ...f,
+                          provider: e.target.value,
+                        }))
+                      }
+                    >
+                      <option value='smtp'>SMTP</option>
+                      <option value='brevo'>Brevo API (HTTP)</option>
+                    </select>
+                    <span className='field-note'>
+                      Use Brevo API on hosts that block outbound SMTP (e.g.
+                      DigitalOcean).
+                    </span>
+                  </div>
+                  {mailboxForm.provider === 'brevo' && (
+                    <div className='control-group'>
+                      <label>
+                        Brevo API Key{' '}
+                        {mailboxForm._id && (
+                          <span className='field-note'>
+                            (leave blank to keep existing)
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type='password'
+                        value={mailboxForm.apiKey}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({
+                            ...f,
+                            apiKey: e.target.value,
+                          }))
+                        }
+                        placeholder='leave blank to use the server default key'
+                        autoComplete='new-password'
+                      />
+                    </div>
+                  )}
+                  {mailboxForm.provider !== 'brevo' && (
+                  <>
+                  <div className='control-group'>
                     <label>SMTP Host</label>
                     <input
                       value={mailboxForm.host}
@@ -280,6 +325,8 @@ export default function DashboardPage() {
                       autoComplete='new-password'
                     />
                   </div>
+                  </>
+                  )}
                   <div className='control-group'>
                     <label>Daily Limit</label>
                     <input

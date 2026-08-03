@@ -27,6 +27,16 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-031] Mailbox provider selector (SMTP / Brevo API)
+- priority: P1
+- status: done
+- area: both
+- description: Let mailboxes be added as Brevo (HTTP API) from the UI, so they work on hosts that block SMTP (DigitalOcean). Add a Provider dropdown + optional API-key field to the Add/Edit Mailbox form; add `brevo` to the server provider whitelist; make validateMailbox provider-aware (API providers don't need host/user/pass); persist apiKey on edit; load +apiKey in the test route. Fixes the "test fails with Connection timeout" on SMTP mailboxes.
+- acceptance:
+  - [x] Mailbox form has a Provider select; choosing Brevo hides SMTP fields and shows an optional API Key field
+  - [x] API accepts a Brevo mailbox without host/user/pass (201) and still rejects an SMTP one missing host (400); apiKey never returned in responses
+  - [x] Test route uses a per-mailbox apiKey; server + client build clean; verified in a real browser
+
 ## [T-030] Timezone-aware campaign send window
 - priority: P1
 - status: done

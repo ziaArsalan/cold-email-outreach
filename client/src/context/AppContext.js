@@ -719,6 +719,8 @@ export function AppProvider({ children }) {
   const BLANK_MAILBOX = {
     name: '',
     email: '',
+    provider: 'smtp',
+    apiKey: '',
     host: '',
     port: 465,
     secure: true,
@@ -749,6 +751,8 @@ export function AppProvider({ children }) {
       _id: mb._id,
       name: mb.name || '',
       email: mb.email || '',
+      provider: mb.provider || 'smtp',
+      apiKey: '', // never prefilled — blank means "keep existing"
       host: mb.host || '',
       port: mb.port || 465,
       secure: mb.secure !== false,
@@ -773,13 +777,11 @@ export function AppProvider({ children }) {
     if (!mailboxForm) return
     setMailboxBusy(true)
     try {
+      const isBrevo = mailboxForm.provider === 'brevo'
       const payload = {
         name: mailboxForm.name,
         email: mailboxForm.email,
-        host: mailboxForm.host,
-        port: Number(mailboxForm.port),
-        secure: !!mailboxForm.secure,
-        username: mailboxForm.username,
+        provider: mailboxForm.provider || 'smtp',
         dailyLimit: Number(mailboxForm.dailyLimit),
         hourlyLimit: Number(mailboxForm.hourlyLimit),
         warmupEnabled: !!mailboxForm.warmupEnabled,
@@ -787,9 +789,19 @@ export function AppProvider({ children }) {
           ? mailboxForm.warmupStartDate
           : null,
       }
-      // Only send a password when the user actually typed one — on edit, a
-      // blank field means "keep the existing password" (never overwrite with '').
-      if (mailboxForm.password) payload.password = mailboxForm.password
+      // SMTP providers need host/port/username/password; Brevo (HTTP API) needs
+      // only an API key (optional — server falls back to its env key).
+      if (isBrevo) {
+        if (mailboxForm.apiKey) payload.apiKey = mailboxForm.apiKey
+      } else {
+        payload.host = mailboxForm.host
+        payload.port = Number(mailboxForm.port)
+        payload.secure = !!mailboxForm.secure
+        payload.username = mailboxForm.username
+        // Only send a password when the user actually typed one — on edit, a
+        // blank field means "keep the existing password" (never overwrite with '').
+        if (mailboxForm.password) payload.password = mailboxForm.password
+      }
 
       if (mailboxForm._id) {
         await axios.put(`${API}/mailboxes/${mailboxForm._id}`, payload)
