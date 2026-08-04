@@ -6,7 +6,11 @@ const {
   updateLeadStatus,
   saveGeneratedEmail,
 } = require('../services/sheetsService')
-const { generateEmail, generateIntro } = require('../services/aiService')
+const {
+  generateEmail,
+  generateIntro,
+  generateIntros,
+} = require('../services/aiService')
 const { sendEmail, verifyConnection } = require('../services/emailService')
 const { fetchJobRows, updateCoverLetter } = require('../services/upworkSheet')
 const { generateProposal } = require('../services/proposalService')
@@ -1093,19 +1097,32 @@ router.post('/lists/:id/regenerate', async (req, res) => {
       throw err
     }
 
+    // Batch the AI calls: one request per chunk of leads instead of one per
+    // lead, to conserve the (free-tier) requests-per-day quota. If a batch fails
+    // or omits a lead, fall back to a single per-lead call for just those.
+    const BATCH = Number(process.env.AI_INTRO_BATCH_SIZE) || 15
     let regenerated = 0
     let failed = 0
-    for (const lead of leads) {
+    for (let start = 0; start < leads.length; start += BATCH) {
+      const chunk = leads.slice(start, start + BATCH)
+      let results
       try {
-        lead.aiIntro = undefined
-        lead.aiSubject = undefined
-        const { intro, subject } = await generateIntro(lead)
-        lead.aiIntro = intro
-        lead.aiSubject = subject
-        await lead.save()
-        regenerated += 1
+        results = await generateIntros(chunk)
       } catch (err) {
-        failed += 1
+        results = chunk.map(() => null) // whole batch failed → per-lead fallback
+      }
+      for (let i = 0; i < chunk.length; i++) {
+        const lead = chunk[i]
+        try {
+          let r = results[i]
+          if (!r) r = await generateIntro(lead) // fallback for a missing entry
+          lead.aiIntro = r.intro
+          lead.aiSubject = r.subject
+          await lead.save()
+          regenerated += 1
+        } catch (err) {
+          failed += 1
+        }
       }
     }
 

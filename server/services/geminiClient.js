@@ -20,32 +20,77 @@ const GEMINI_API_URL =
 // fast default. Override with GEMINI_MODEL if needed.
 const model = () => process.env.GEMINI_MODEL || 'gemini-3-flash-preview'
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// HTTP statuses worth retrying: 429 (rate limit / RESOURCE_EXHAUSTED), 500/503
+// (transient "model overloaded / high demand"). Others fail fast.
+const RETRYABLE = new Set([429, 500, 503])
+const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES) || 4
+// Never block a worker tick for a huge server-suggested delay: a big retryDelay
+// means the DAILY quota is exhausted (won't clear for hours), so we give up and
+// let the caller defer instead of sleeping. RPM waits are only a few seconds.
+const MAX_BACKOFF_MS = Number(process.env.GEMINI_MAX_BACKOFF_MS) || 30000
+
+// Gemini 429s include a RetryInfo detail like { retryDelay: "17s" } — honor it
+// (capped) so we wait exactly as long as the server asks, no more.
+const suggestedDelayMs = (data) => {
+  const details = data?.error?.details || []
+  const ri = details.find((d) => String(d['@type'] || '').includes('RetryInfo'))
+  const m = ri && /^([\d.]+)s$/.exec(ri.retryDelay || '')
+  return m ? Math.ceil(parseFloat(m[1]) * 1000) : null
+}
+
 // Call Gemini and return the reply as plain text (all text parts concatenated).
-// Throws a readable Error on API failure so callers/routes can surface it.
+// Retries transient rate-limit/overload errors with capped exponential backoff
+// (honoring the server's RetryInfo). Throws a readable Error once exhausted so
+// callers/routes can surface it (the send worker defers the email on throw).
 const generateText = async (prompt, { temperature = 0.7 } = {}) => {
   if (!process.env.GEMINI_API_KEY)
     throw new Error('GEMINI_API_KEY is not set')
 
-  const { data } = await axios
-    .post(
-      `${GEMINI_API_URL}/${model()}:generateContent`,
-      {
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature },
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': process.env.GEMINI_API_KEY,
+  let data
+  for (let attempt = 0; ; attempt++) {
+    try {
+      ;({ data } = await axios.post(
+        `${GEMINI_API_URL}/${model()}:generateContent`,
+        {
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature },
         },
-        timeout: 60000,
-      },
-    )
-    .catch((err) => {
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': process.env.GEMINI_API_KEY,
+          },
+          timeout: 60000,
+        },
+      ))
+      break
+    } catch (err) {
+      const status = err.response?.status
       const msg = err.response?.data?.error?.message || err.message
-      console.log('[gemini] error:', msg)
-      throw new Error(`Gemini API error: ${msg}`)
-    })
+      const suggested = suggestedDelayMs(err.response?.data)
+      // Retry only transient statuses, within the attempt budget, and only when
+      // the server isn't asking us to wait longer than we're willing to block.
+      const canRetry =
+        RETRYABLE.has(status) &&
+        attempt < MAX_RETRIES &&
+        (suggested == null || suggested <= MAX_BACKOFF_MS)
+      if (!canRetry) {
+        console.log('[gemini] error:', msg)
+        throw new Error(`Gemini API error: ${msg}`)
+      }
+      const backoff =
+        suggested != null
+          ? suggested
+          : Math.min(MAX_BACKOFF_MS, 1000 * 2 ** attempt)
+      const wait = backoff + Math.floor(Math.random() * 500) // jitter
+      console.log(
+        `[gemini] ${status} — retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms: ${msg}`,
+      )
+      await sleep(wait)
+    }
+  }
 
   const parts = data?.candidates?.[0]?.content?.parts || []
   const text = parts

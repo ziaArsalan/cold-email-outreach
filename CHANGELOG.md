@@ -4,6 +4,14 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-08-04 — [T-037] Gemini quota resilience — 429 backoff + batched intro generation
+- **Added (429/503 backoff + retry):** `geminiClient.generateText` now retries transient rate-limit/overload errors (429 `RESOURCE_EXHAUSTED`, 500/503) with capped exponential backoff + jitter, **honoring the server's `RetryInfo.retryDelay`**. A short RPM wait becomes a retry instead of a hard failure. If the suggested delay is large (daily quota exhausted, won't clear for hours) it **gives up immediately** rather than blocking the send worker — which then defers that email and moves on. Tunable via `GEMINI_MAX_RETRIES` / `GEMINI_MAX_BACKOFF_MS`.
+- **Added (batched intros — fewer requests/day):** new `aiService.generateIntros(leads, aiPrompt)` generates openers+subjects for **many leads in one request** (returns a JSON array keyed by index). The bulk **"Regenerate all intros"** route (`POST /api/lists/:id/regenerate`) now processes leads in chunks of `AI_INTRO_BATCH_SIZE` (default 15) — ~15× fewer requests, which is what matters against the free-tier requests-per-day ceiling. Robust: a failed/partial batch falls back to a single per-lead call for just the affected leads, so nothing is lost.
+- **New/changed:** `geminiClient.js` (retry loop + `suggestedDelayMs`); `aiService.js` (`generateIntros` + `BATCH_INTRO_PROMPT`, exported); `/lists/:id/regenerate` batches with per-lead fallback; `.env.example` documents the new knobs.
+- **Area:** server
+- **QA:** modules load; unit-tested with a stubbed axios (no real API calls / zero quota): a 429 with a small `retryDelay` retries then succeeds; a 429 with a huge `retryDelay` gives up in ~1 ms (no long block, so the worker defers); batch parsing maps results by index and yields `null` for a missing lead (→ per-lead fallback). Steady-state send-time generation is unchanged (still lazy + cached per lead).
+- **Complementary (operator actions, not code):** enable billing on the Gemini key (Tier 1 — the real ceiling lift) and/or set `GEMINI_MODEL` to a stable high-free-limit model (e.g. Flash-Lite) instead of the `-preview` default.
+
 ### 2026-08-04 — [T-036] Resend button for failed emails in the dashboard queue
 - **Added:** a **↻ Resend** button in the Live Queue actions column for **failed** items. Clicking it re-queues that specific email so the worker tries it again — resets the item to a fresh `pending` (retries → 0, `scheduledAt`/`sentAt` cleared, error cleared, sends on the next tick). Only `failed` items get the button; `bounced` is intentionally excluded (a bounce would just re-bounce and hurt reputation).
 - **New/changed (server):** `POST /api/queue/:id/resend` — 400 if the item isn't `failed`, 404 if not found; otherwise resets it to pending.

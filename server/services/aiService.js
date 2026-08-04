@@ -110,7 +110,62 @@ const generateIntro = async (lead, aiPrompt) => {
   return { intro: parsed.intro, subject: parsed.subject }
 }
 
-module.exports = { generateEmail, generateIntro }
+// ── Batched intros — ONE request for many leads (cuts requests-per-day) ──────
+// Same rules as INTRO_PROMPT, but the model returns an array keyed by the lead's
+// index so we can map results back. Used by bulk "regenerate all intros" so N
+// leads cost 1 request instead of N (RPD is the free-tier ceiling).
+const BATCH_INTRO_PROMPT = (leads, aiPrompt) => `
+You are writing the personalized OPENING LINE + a short subject for a batch of
+cold outreach emails from Devtronics (a SaaS/app development studio run by Zia
+Arsalan). Produce one result per lead listed below, keyed by its [index].
+
+CRITICAL — DO NOT INVENT ANYTHING about any lead. You have NOT visited any
+website and know NOTHING beyond the fields given for each lead. A generic-but-
+true opener is far better than a specific-but-fabricated one.
+
+Rules for EACH intro:
+- Under 50 words. Natural, human, conversational — write like a person.
+- No marketing buzzwords (leverage, synergy, seamless, game-changer, unlock,
+  empower, elevate…) and no AI-sounding phrasing ("I hope this email finds you
+  well", "I came across your…", "In today's fast-paced world").
+- Do NOT include a greeting, a pitch, a signature, or a CTA — just the 1-2
+  sentence opener. Also give a short, specific subject (no buzzwords/clickbait).${
+    typeof aiPrompt === 'string' && aiPrompt.trim()
+      ? `\n\nAdditional instructions for this campaign:\n${aiPrompt}`
+      : ''
+  }
+
+Leads:
+${leads
+  .map(
+    (l, i) =>
+      `[${i}] first_name: ${l.firstName || '(unknown)'} | company: ${
+        l.company || '(unknown)'
+      } | website: ${l.website || '(unknown)'} | industry: ${
+        l.industry || '(unknown)'
+      } | country: ${l.country || '(unknown)'}`,
+  )
+  .join('\n')}
+
+Return ONLY this JSON (no markdown, no extra text), one entry per lead index:
+{ "results": [ { "i": 0, "intro": "...", "subject": "..." } ] }
+`
+
+// Generate intros for many leads in a single request. Returns an array aligned
+// to `leads` order; entries the model didn't produce are null so the caller can
+// fall back per-lead. Throws only if the whole request fails (caller decides).
+const generateIntros = async (leads, aiPrompt) => {
+  if (!leads.length) return []
+  const parsed = await generateJson(BATCH_INTRO_PROMPT(leads, aiPrompt))
+  const results = Array.isArray(parsed.results) ? parsed.results : []
+  const byIndex = new Map(results.map((r) => [Number(r.i), r]))
+  return leads.map((_, i) => {
+    const r = byIndex.get(i)
+    return r && r.intro ? { intro: r.intro, subject: r.subject } : null
+  })
+}
+
+module.exports = { generateEmail, generateIntro, generateIntros }
 
 /* ────────────────────────────────────────────────────────────────────────────
  * PREVIOUS PROVIDER — Anthropic Claude (+ web_search research). Preserved so we

@@ -27,7 +27,19 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-037] Gemini quota resilience — 429 backoff + batched intros
+- priority: P1
+- status: done
+- area: server
+- description: Reduce Gemini quota (429) failures. (1) geminiClient retries 429/503 with capped exponential backoff honoring RetryInfo.retryDelay; gives up fast on a huge (daily-quota) delay so the worker defers instead of blocking. (2) aiService.generateIntros batches many leads per request; bulk /lists/:id/regenerate processes chunks of AI_INTRO_BATCH_SIZE with per-lead fallback. Tunables in .env.example.
+- acceptance:
+  - [x] Transient 429/503 retried with backoff (honors retryDelay); huge delay → give up (no long block)
+  - [x] Bulk regenerate uses one request per chunk; failed/partial batch falls back per-lead
+  - [x] Unit-tested with stubbed axios (no real calls); modules load; steady-state send-time gen unchanged
+- notes: complementary operator actions — enable billing (Tier 1) and/or set GEMINI_MODEL to a stable Flash-Lite.
+
 ## [T-036] Resend button for failed emails in the dashboard queue
+
 - priority: P2
 - status: done
 - area: both
@@ -457,6 +469,3 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Apify rate errors, empty results, and actor failures are caught per-keyword and logged without crashing the cron loop
   - [x] `APIFY_API_TOKEN` added to `server/.env.example` as a placeholder; never committed with a real value
   - [x] `UPWORK_SOURCE=fixtures` still works unchanged (no regression)
-
-gemini quota
-https://ai.google.dev/gemini-api/docs/rate-limits
