@@ -109,19 +109,6 @@ export default function TemplateForm() {
                 }
               </span>
             </div>
-            <div className='control-group full-width'>
-              <label>Signature</label>
-              <textarea
-                rows={3}
-                value={templateForm.signature}
-                onChange={(e) =>
-                  setTemplateForm((f) => ({
-                    ...f,
-                    signature: e.target.value,
-                  }))
-                }
-              />
-            </div>
             <div className='control-group'>
               <label>
                 <input
@@ -151,11 +138,6 @@ export default function TemplateForm() {
             <div style={{ whiteSpace: 'pre-wrap' }}>
               {substitute(templateForm.body, SAMPLE_VARS)}
             </div>
-            {templateForm.signature && (
-              <div style={{ whiteSpace: 'pre-wrap', marginTop: '0.75rem' }}>
-                {substitute(templateForm.signature, SAMPLE_VARS)}
-              </div>
-            )}
           </div>
 
           <div

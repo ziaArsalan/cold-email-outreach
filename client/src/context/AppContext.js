@@ -737,7 +737,6 @@ export function AppProvider({ children }) {
     name: '',
     subject: '',
     body: '',
-    signature: '',
     active: true,
   }
 
@@ -875,7 +874,6 @@ export function AppProvider({ children }) {
       name: t.name || '',
       subject: t.subject || '',
       body: t.body || '',
-      signature: t.signature || '',
       active: t.active !== false,
     })
 
@@ -899,7 +897,10 @@ export function AppProvider({ children }) {
         name: templateForm.name,
         subject: templateForm.subject,
         body: templateForm.body,
-        signature: templateForm.signature,
+        // Signatures are per-mailbox now (T-034) — the template signature is
+        // deprecated, so any save clears it. The send path still falls back to
+        // an existing template signature if a mailbox has none.
+        signature: '',
         active: templateForm.active,
       }
       if (templateForm._id) {

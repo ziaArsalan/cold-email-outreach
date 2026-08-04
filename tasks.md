@@ -27,7 +27,19 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-035] Remove template signature (superseded by per-mailbox signatures)
+- priority: P2
+- status: done
+- area: both
+- description: Remove the Signature field from the New/Edit Template form + preview now that signatures are per-mailbox (T-034); saving a template clears its signature; clear signature on all existing templates (incl. the ones used in campaigns). Keep Template.signature in the model as a defensive fallback in renderStep.
+- acceptance:
+  - [x] Template form no longer shows a Signature field/preview; saving writes an empty signature
+  - [x] Existing template signatures cleared (all 5, incl. the 4 in campaigns)
+  - [x] No dangling refs; client build clean
+- notes: emails have NO signature until per-mailbox signatures are set — flag to user.
+
 ## [T-034] Per-mailbox email signature
+
 - priority: P2
 - status: done
 - area: both
@@ -38,6 +50,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Server persists signature (PUT round-trip); precedence unit-tested; server + client build clean
 
 ## [T-033] Choose sender mailbox in Template Test (placement testing)
+
 - priority: P2
 - status: done
 - area: both
@@ -48,6 +61,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] app.loyalideas@gmail.com is no longer unsubscribed; server + client build clean; verified in a real browser
 
 ## [T-032] Sticky mailbox across a lead's follow-up sequence
+
 - priority: P2
 - status: done
 - area: server
@@ -59,6 +73,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 - notes: infra (QueuedEmail.mailboxId + worker item.mailboxId pin) already existed; wired into follow-up scheduling.
 
 ## [T-031] Mailbox provider selector (SMTP / Brevo API)
+
 - priority: P1
 - status: done
 - area: both
@@ -69,6 +84,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Test route uses a per-mailbox apiKey; server + client build clean; verified in a real browser
 
 ## [T-030] Timezone-aware campaign send window
+
 - priority: P1
 - status: done
 - area: both
@@ -79,6 +95,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Invalid/missing timezone falls back safely; server + client build clean
 
 ## [T-029] Sortable dashboard Live Queue
+
 - priority: P2
 - status: done
 - area: both
@@ -89,6 +106,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Verified in a real browser: table reorders and caret reflects field + direction
 
 ## [T-028] Duplicate-email detection on lead upload
+
 - priority: P2
 - status: done
 - area: both
@@ -99,6 +117,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Import summary shows the breakdown; server + client build clean; counting unit-tested
 
 ## [T-027] Google Maps import: lead-quality filter + live loading UI
+
 - priority: P2
 - status: done
 - area: both
@@ -109,6 +128,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Server + client build clean; filter logic verified across cases
 
 ## [T-026] Real URL routing; campaign/template forms as nested routes
+
 - priority: P2
 - status: done
 - area: client
@@ -119,6 +139,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Sidebar highlights the parent tab on nested routes; clean CI build; no new console errors
 
 ## [T-025] Copy a campaign to another list
+
 - priority: P2
 - status: done
 - area: both
@@ -129,6 +150,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Endpoint validates the target list exists (400 otherwise); server + client build clean; live round-trip verified
 
 ## [T-024] Fetch real leads from Google Maps (Apify) into a list
+
 - priority: P2
 - status: done
 - area: both
@@ -139,6 +161,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Server and client build clean; new modules load; live actor run verified end-to-end
 
 ## [T-023] Client refactor — extract Campaigns page (final phase), App.js = shell
+
 - priority: P2
 - status: done
 - area: client
@@ -150,6 +173,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Clean CRA production build (CI=true) and no console errors on load
 
 ## [T-022] Client refactor — extract Dashboard page, phase 4
+
 - priority: P2
 - status: done
 - area: client
@@ -160,6 +184,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Clean CRA production build (CI=true) and no console errors on load
 
 ## [T-021] Client refactor — extract Lists + Preview pages, phase 3
+
 - priority: P2
 - status: done
 - area: client
@@ -171,6 +196,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Clean CRA production build (CI=true) and no console errors on load
 
 ## [T-020] Client refactor — extract Upwork + Settings pages, phase 2
+
 - priority: P2
 - status: done
 - area: client
@@ -182,6 +208,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Clean CRA production build (CI=true) and no console errors on load
 
 ## [T-019] Client refactor — modular structure (AppContext + pages), phase 1
+
 - priority: P2
 - status: done
 - area: client
@@ -195,6 +222,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 <!-- ═══ Outreach V2.2 (lead lists) — do T-017 then T-018 ═══ -->
 
 ## [T-017] Lead lists — listing module (List model, imports, list/leads UI)
+
 - priority: P1
 - status: done
 - area: both
@@ -208,6 +236,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Deleting a list with no campaign referencing it unassigns its leads and removes the list; deleting one targeted by a running campaign is blocked with a clear error
 
 ## [T-018] Campaigns target a lead list
+
 - priority: P1
 - status: done
 - area: both
@@ -221,6 +250,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 <!-- ═══ Outreach V2.1 (portal completeness) — do T-014→T-016 in order ═══ -->
 
 ## [T-014] Template manager UI — create/edit email copy from the portal
+
 - priority: P1
 - status: done
 - area: both
@@ -232,6 +262,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Deleting an unreferenced template removes it; deleting one referenced by a campaign shows a clear error and does not delete
 
 ## [T-015] Follow-up sequences — multi-step campaigns with stop-on-reply
+
 - priority: P1
 - status: done
 - area: both
@@ -244,10 +275,11 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Deliverability validation at start covers every step's template (a 2-link template in step 2 blocks the start)
 
 ## [T-016] Outreach settings portal — move runtime tunables out of .env
+
 - priority: P2
 - status: done
 - area: both
-- description: Most V2 env vars are runtime tunables, not secrets — manage them from the portal (same live-read pattern as the Upwork monitor's `upworkConfigStore`, but Mongo-backed). Server: an `OutreachSetting` singleton doc + `settingsService.get()` with precedence stored-value → env → default, read **live** where it matters (worker tick reads sendMode/delays/enabled each cycle — the worker loop keeps running and checks an `enabled` flag per tick instead of only at boot; verification toggles read per start; retry/idle values per use). Manageable settings: queue worker enabled, send mode (warmup/production), warm-up + production delay ranges (minutes in the UI, ms in storage), max retries, worker idle seconds, warm-up week table (4 rows), email-verification toggles (MX / disposable / role-based). Secrets and infra (SMTP_*, ANTHROPIC_API_KEY, GOOGLE_*, MONGODB_URI, JWT/AUTH, APIFY_*) stay env-only — never shown in the portal. Endpoints: `GET/PUT /api/outreach-settings` (validated). Client: an "Outreach Settings" card (grouped: Worker, Delays, Warm-up, Verification) in the Settings/Dashboard area with Save + saved-state feedback. `.env.example` gains a comment noting these vars are now fallbacks for the portal settings.
+- description: Most V2 env vars are runtime tunables, not secrets — manage them from the portal (same live-read pattern as the Upwork monitor's `upworkConfigStore`, but Mongo-backed). Server: an `OutreachSetting` singleton doc + `settingsService.get()` with precedence stored-value → env → default, read **live** where it matters (worker tick reads sendMode/delays/enabled each cycle — the worker loop keeps running and checks an `enabled` flag per tick instead of only at boot; verification toggles read per start; retry/idle values per use). Manageable settings: queue worker enabled, send mode (warmup/production), warm-up + production delay ranges (minutes in the UI, ms in storage), max retries, worker idle seconds, warm-up week table (4 rows), email-verification toggles (MX / disposable / role-based). Secrets and infra (SMTP*\*, ANTHROPIC_API_KEY, GOOGLE*_, MONGODB*URI, JWT/AUTH, APIFY*_) stay env-only — never shown in the portal. Endpoints: `GET/PUT /api/outreach-settings` (validated). Client: an "Outreach Settings" card (grouped: Worker, Delays, Warm-up, Verification) in the Settings/Dashboard area with Save + saved-state feedback. `.env.example` gains a comment noting these vars are now fallbacks for the portal settings.
 - acceptance:
   - [x] Settings card loads current effective values (stored ?? env ?? default) and saves changes that persist across a server restart
   - [x] Toggling "queue worker enabled" OFF in the portal stops sends within one worker tick (no server restart); ON resumes them
@@ -258,6 +290,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 <!-- ═══ Outreach V2 (queue-based sending) — spec: .claude/docs/OUTREACH-V2.md — do T-007→T-013 in order ═══ -->
 
 ## [T-007] Outreach V2 foundation — MongoDB, config module, models, Sheets import
+
 - priority: P1
 - status: done
 - area: server
@@ -269,6 +302,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] `.env.example` gains `MONGODB_URI`, `QUEUE_WORKER_ENABLED`, `SEND_MODE` (placeholders only)
 
 ## [T-008] Templates + AI intro-only personalization
+
 - priority: P1
 - status: done
 - area: server
@@ -280,6 +314,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Existing `/api/preview` (Sheets flow) still works unchanged
 
 ## [T-009] Provider-agnostic SMTP layer + mailbox management
+
 - priority: P1
 - status: done
 - area: server
@@ -291,6 +326,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Existing `/api/test-smtp` and single-send flow still work via the new provider layer
 
 ## [T-010] Email queue + scheduler worker (random delays, rotation, retries, rate-limit pause)
+
 - priority: P1
 - status: done
 - area: server
@@ -303,6 +339,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] SendLog has one entry per attempt with category + refs
 
 ## [T-011] Campaigns — CRUD, states, enqueue flow (replaces batch /start)
+
 - priority: P1
 - status: done
 - area: both
@@ -314,6 +351,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Old batch send button is gone from the UI; leads flow only through campaigns
 
 ## [T-012] Analytics dashboard + queue/mailbox visibility
+
 - priority: P2
 - status: done
 - area: both
@@ -325,6 +363,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Queue view filters by status and shows scheduledAt/sentAt/error per item
 
 ## [T-013] Deliverability polish + sending-domain guide
+
 - priority: P2
 - status: done
 - area: server
@@ -336,6 +375,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] DELIVERABILITY.md exists with copy-pasteable SPF/DKIM/DMARC record examples
 
 ## [T-006] Login screen + Monitor Settings UI polish
+
 - priority: P0
 - status: done
 - area: both
@@ -350,6 +390,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] All existing Upwork settings (actor ID, keywords, cron interval, auto-cover, schedule, daily limit, cron toggle) still load, edit, and save correctly after the layout change
 
 ## [T-005] Upwork monitor controls — cron toggle, time-window scheduling, proposal limit, test-query
+
 - priority: P1
 - status: done
 - area: both
@@ -364,6 +405,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Existing settings (actor ID, keywords, cron interval, auto-cover) continue to work unchanged
 
 ## [T-004] Upwork dashboard — frontend module (stats, settings, jobs table, cover letter actions)
+
 - priority: P1
 - status: done
 - area: both
@@ -404,3 +446,7 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] Apify rate errors, empty results, and actor failures are caught per-keyword and logged without crashing the cron loop
   - [x] `APIFY_API_TOKEN` added to `server/.env.example` as a placeholder; never committed with a real value
   - [x] `UPWORK_SOURCE=fixtures` still works unchanged (no regression)
+
+resend button for failure
+gemini quota
+https://ai.google.dev/gemini-api/docs/rate-limits

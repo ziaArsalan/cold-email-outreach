@@ -4,6 +4,15 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-08-04 — [T-035] Remove the template signature (superseded by per-mailbox signatures)
+- **Changed:** the **Signature** field is gone from the New/Edit Template form (and from the template Live Preview), now that signatures live on the mailbox (T-034). Saving any template writes an empty signature, so the deprecated field can't be repopulated from the UI.
+- **Data:** cleared `signature` on **all 5 templates** (the 4 used in campaigns — `Restaurants`, `Restaurants Follow 1/2/3` — plus `Default`).
+- **Kept:** `Template.signature` still exists in the model and `renderStep` still falls back to it when a mailbox has no signature — purely defensive; it's just always empty now.
+- **New/changed (client):** `TemplateForm` drops the Signature textarea + preview block; `BLANK_TEMPLATE`/`openEditTemplateForm` no longer carry `signature`; `saveTemplate` sends `signature: ''`.
+- **Area:** both (client UI + a one-off data cleanup)
+- **QA:** `CI=true` build compiled (−57 B); no dangling `templateForm.signature` references remain; template-signature clear verified (matched=5 modified=5).
+- **IMPORTANT:** with template signatures now empty, emails have **no signature** until each mailbox has its own signature set (T-034) — otherwise the fallback resolves to empty. Set signatures on `zia@`/`sarah@`/`rodney@` before/at deploy.
+
 ### 2026-08-03 — [T-034] Per-mailbox email signature
 - **Added:** each mailbox can now have its **own signature**, so emails are signed as the actual sender instead of every email sharing one signature. At send time the worker appends the **sending mailbox's** signature; if that mailbox has none, it falls back to the template's signature (so nothing breaks for mailboxes without one). Because the mailbox is chosen (rotation) *before* the body is rendered, the right signature is applied per send — including follow-ups, which stay on their sticky mailbox.
 - **New/changed (server):** `Mailbox.signature` field; `campaignService.renderStep(campaign, lead, stepIndex, mailbox)` + `prepareSendContent(…, mailbox)` apply the precedence (mailbox signature → template signature); the scheduler passes the chosen `mailbox` into `prepareSendContent`; `POST /api/templates/:id/test` uses the selected mailbox's signature so placement tests reflect the real sign-off; mailbox create/edit accept + persist `signature` (validated as a string; PUT whitelist updated).
