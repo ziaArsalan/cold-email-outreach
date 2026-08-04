@@ -7,7 +7,7 @@
 
 const { Mailbox, Lead } = require('../models')
 const { fetchNewMessages, isAutoReply } = require('../services/imapService')
-const { markLeadReplied } = require('../services/replyService')
+const { markLeadReplied, recordReply } = require('../services/replyService')
 
 const POLL_MS = Number(process.env.IMAP_POLL_MS) || 120000 // 2 min default
 let timer = null
@@ -17,30 +17,36 @@ let timer = null
 const pollMailbox = async (mailbox) => {
   const { messages, maxUid } = await fetchNewMessages(mailbox, mailbox.imapLastUid)
 
-  let matched = 0
+  let recorded = 0
   for (const msg of messages) {
     if (!msg.fromEmail || isAutoReply(msg)) continue
     // Ignore mail from our own sending addresses (loops / internal).
     const self = await Mailbox.exists({ email: msg.fromEmail })
     if (self) continue
 
-    const lead = await Lead.findOne({ email: msg.fromEmail })
-    if (!lead) continue // not a lead → not our concern (keeps Replies clean)
+    const reply = {
+      mailboxId: mailbox._id,
+      fromEmail: msg.fromEmail,
+      fromName: msg.fromName,
+      subject: msg.subject,
+      snippet: (msg.text || '').slice(0, 300),
+      messageId: msg.messageId,
+      receivedAt: msg.date,
+    }
 
-    await markLeadReplied(lead, {
-      note: 'auto',
-      reply: {
-        mailboxId: mailbox._id,
-        campaignId: lead.campaignId || undefined,
-        fromEmail: msg.fromEmail,
-        fromName: msg.fromName,
-        subject: msg.subject,
-        snippet: (msg.text || '').slice(0, 300),
-        messageId: msg.messageId,
-        receivedAt: msg.date,
-      },
-    })
-    matched += 1
+    // From a known lead → mark them replied (stops follow-ups) + record it.
+    // Otherwise still record the reply so nothing is missed (a lead may reply
+    // from a different address); it just can't auto-stop a sequence.
+    const lead = await Lead.findOne({ email: msg.fromEmail })
+    if (lead) {
+      await markLeadReplied(lead, {
+        note: 'auto',
+        reply: { ...reply, campaignId: lead.campaignId || undefined },
+      })
+    } else {
+      await recordReply(reply)
+    }
+    recorded += 1
   }
 
   // Advance the watermark + health, even when nothing matched.
@@ -54,7 +60,7 @@ const pollMailbox = async (mailbox) => {
       },
     },
   )
-  return matched
+  return recorded
 }
 
 const tick = async () => {

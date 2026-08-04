@@ -6,6 +6,17 @@
 
 const { Lead, QueuedEmail, Reply, SendLog } = require('../models')
 
+// Store an inbound reply (deduped by mailboxId + Message-ID). leadId may be
+// absent — a reply can come from an address that isn't a lead (e.g. the contact
+// replies from a personal account). Safe to call repeatedly.
+const recordReply = async (reply) => {
+  try {
+    await Reply.create(reply)
+  } catch (err) {
+    if (err.code !== 11000) throw err // ignore duplicate; rethrow real errors
+  }
+}
+
 // Mark a lead replied + cancel in-flight follow-ups, and optionally store the
 // inbound reply. Idempotent: re-marking an already-replied lead won't re-cancel,
 // but a new reply record is still saved (a lead can reply more than once).
@@ -28,15 +39,8 @@ const markLeadReplied = async (lead, { note = 'manual', reply = null } = {}) => 
     }).catch(() => {})
   }
 
-  if (reply) {
-    try {
-      await Reply.create({ leadId: lead._id, ...reply })
-    } catch (err) {
-      // Duplicate (mailboxId+messageId) → already recorded; ignore.
-      if (err.code !== 11000) throw err
-    }
-  }
+  if (reply) await recordReply({ leadId: lead._id, ...reply })
   return lead
 }
 
-module.exports = { markLeadReplied }
+module.exports = { markLeadReplied, recordReply }
