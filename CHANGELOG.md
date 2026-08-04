@@ -4,6 +4,11 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-08-04 — [T-039a] Reply detection: backfill recent inbox on first poll
+- **Fixed:** a mailbox's **first** IMAP poll now scans the **last `IMAP_BACKFILL_COUNT` messages** (default 50) instead of only watching from that moment on. The original "just set a watermark" behavior meant replies already sitting in the inbox when you enabled detection were never picked up (Replies stayed empty even though polling worked). Because we still only **record messages from known leads** (and skip auto-replies), backfilling recent mail is safe — it can't flood the Replies tab. After the first run it's purely incremental (UID > watermark) as before. Set `IMAP_BACKFILL_COUNT=0` to keep the old watch-from-now behavior.
+- **Ops:** reset `imapLastUid=0` on the enabled mailboxes so the (now backfilling) first run re-triggers on the next poll after deploy.
+- **Area:** server
+
 ### 2026-08-04 — [T-039] Reply detection (IMAP) — auto-mark replied + a Replies tab
 - **Added:** the app now **reads inbound replies** so you don't have to watch three inboxes. A background **IMAP poller** checks each reply-enabled mailbox's INBOX (read-only) and, when a message comes **from a known lead**, **auto-marks that lead `replied`** — which stops their follow-up sequence — and records it in a new **Replies** tab (from / lead / campaign / subject / preview / inbox / time). This makes the manual "Mark replied" button mostly unnecessary.
 - **Auto-stop is now eager:** marking replied (manual OR auto) immediately cancels the lead's queued follow-ups (shared `replyService.markLeadReplied`), not just lazily at send time.

@@ -32,10 +32,16 @@ const testConnection = async (mailbox) => {
   }
 }
 
-// Fetch INBOX messages with UID > sinceUid. On the FIRST run (sinceUid 0) we only
-// set the watermark to the current newest UID — we don't backfill the whole inbox
-// (that would mark years of old mail as fresh replies). Returns { messages, maxUid }.
-const fetchNewMessages = async (mailbox, sinceUid = 0, limit = 50) => {
+// How many recent messages to scan on a mailbox's FIRST poll, so replies already
+// sitting in the inbox get caught (we only ever RECORD messages from known leads,
+// so this can't flood Replies with random mail). After that it's purely
+// incremental (UID > watermark). 0 = watch from now on (no backfill).
+const BACKFILL = Number(process.env.IMAP_BACKFILL_COUNT ?? 50)
+
+// Fetch INBOX messages with UID > sinceUid. On the first run (sinceUid 0) we start
+// from the last BACKFILL messages instead of only watching from now on.
+// Returns { messages, maxUid }.
+const fetchNewMessages = async (mailbox, sinceUid = 0, limit = 100) => {
   const client = clientFor(mailbox)
   const out = []
   let maxUid = sinceUid || 0
@@ -43,17 +49,20 @@ const fetchNewMessages = async (mailbox, sinceUid = 0, limit = 50) => {
     await client.connect()
     const mbx = await client.mailboxOpen('INBOX', { readOnly: true })
 
+    // First run: scan the last BACKFILL messages (fromUid = newest - BACKFILL).
+    let fromUid = sinceUid
     if (!sinceUid) {
-      const watermark = mbx.uidNext ? mbx.uidNext - 1 : 0
-      return { messages: [], maxUid: watermark }
+      const newest = mbx.uidNext ? mbx.uidNext - 1 : 0
+      if (BACKFILL <= 0) return { messages: [], maxUid: newest }
+      fromUid = Math.max(0, newest - BACKFILL)
     }
 
     for await (const msg of client.fetch(
-      `${sinceUid + 1}:*`,
+      `${fromUid + 1}:*`,
       { uid: true, envelope: true, source: true },
       { uid: true },
     )) {
-      if (!msg.uid || msg.uid <= sinceUid) continue
+      if (!msg.uid || msg.uid <= fromUid) continue
       if (msg.uid > maxUid) maxUid = msg.uid
       let parsed = null
       try {
