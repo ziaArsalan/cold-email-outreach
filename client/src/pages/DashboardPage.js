@@ -23,6 +23,7 @@ export default function DashboardPage() {
     saveMailbox,
     closeMailboxForm,
     testMailbox,
+    testMailboxImap,
     openEditMailboxForm,
     fetchQueueActivity,
     fetchQueue,
@@ -348,6 +349,113 @@ export default function DashboardPage() {
                       template signature). Keep it to one link for deliverability.
                     </span>
                   </div>
+
+                  {/* Reply detection (IMAP) — polls this inbox so a lead's reply
+                      auto-marks them replied and stops their follow-ups. */}
+                  <div className='control-group full-width'>
+                    <label className='checkbox-row'>
+                      <input
+                        type='checkbox'
+                        checked={mailboxForm.imapEnabled}
+                        onChange={(e) =>
+                          setMailboxForm((f) => ({
+                            ...f,
+                            imapEnabled: e.target.checked,
+                          }))
+                        }
+                      />
+                      Enable reply detection (IMAP)
+                    </label>
+                    <span className='field-note'>
+                      Reads this inbox (read-only) so replies from leads
+                      auto-stop their sequence and show in the Replies tab.
+                    </span>
+                  </div>
+                  {mailboxForm.imapEnabled && (
+                    <>
+                      <div className='control-group'>
+                        <label>IMAP Host</label>
+                        <input
+                          value={mailboxForm.imapHost}
+                          onChange={(e) =>
+                            setMailboxForm((f) => ({
+                              ...f,
+                              imapHost: e.target.value,
+                            }))
+                          }
+                          placeholder='mail.privateemail.com'
+                        />
+                      </div>
+                      <div className='control-group'>
+                        <label>IMAP Port</label>
+                        <input
+                          type='number'
+                          value={mailboxForm.imapPort}
+                          onChange={(e) =>
+                            setMailboxForm((f) => ({
+                              ...f,
+                              imapPort: e.target.value,
+                            }))
+                          }
+                          placeholder='993'
+                        />
+                      </div>
+                      <div className='control-group'>
+                        <label>IMAP Username</label>
+                        <input
+                          value={mailboxForm.imapUser}
+                          onChange={(e) =>
+                            setMailboxForm((f) => ({
+                              ...f,
+                              imapUser: e.target.value,
+                            }))
+                          }
+                          placeholder='usually the full email'
+                        />
+                      </div>
+                      <div className='control-group'>
+                        <label>
+                          IMAP Password{' '}
+                          {mailboxForm._id && (
+                            <span className='field-note'>
+                              (leave blank to keep existing)
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          type='password'
+                          value={mailboxForm.imapPassword}
+                          onChange={(e) =>
+                            setMailboxForm((f) => ({
+                              ...f,
+                              imapPassword: e.target.value,
+                            }))
+                          }
+                          autoComplete='new-password'
+                        />
+                      </div>
+                      <div className='control-group full-width'>
+                        <button
+                          type='button'
+                          className='btn-ghost'
+                          disabled={mailboxBusy || !mailboxForm._id}
+                          onClick={() => testMailboxImap(mailboxForm._id)}
+                          title={
+                            mailboxForm._id
+                              ? 'Verify IMAP login on the saved mailbox'
+                              : 'Save the mailbox first, then test'
+                          }
+                        >
+                          {mailboxBusy ? 'Testing…' : 'Test IMAP connection'}
+                        </button>
+                        <span className='field-note'>
+                          {mailboxForm._id
+                            ? 'Tests the saved credentials — save first if you just changed them.'
+                            : 'Save the mailbox first, then reopen it to test IMAP.'}
+                        </span>
+                      </div>
+                    </>
+                  )}
                   <div className='control-group'>
                     <label>Daily Limit</label>
                     <input

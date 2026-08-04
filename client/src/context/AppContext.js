@@ -113,6 +113,8 @@ export function AppProvider({ children }) {
   // Live Queue sort — server-side (the table is paginated, so a client sort would
   // only reorder the visible page). Whitelisted fields mirror the API.
   const [queueSort, setQueueSort] = useState({ field: 'createdAt', dir: 'desc' })
+  // Replies (inbound, detected by the IMAP worker) for the Replies tab.
+  const [replies, setReplies] = useState({ items: [], total: 0, page: 1, pages: 1 })
 
   // Mailbox management (add/edit/test/pause)
   const [mailboxForm, setMailboxForm] = useState(null) // null = closed; {} = new; {...mb} = editing
@@ -639,6 +641,18 @@ export function AppProvider({ children }) {
     fetchQueue(queueStatus, 1, next)
   }
 
+  const fetchReplies = async (page = 1) => {
+    try {
+      const { data } = await axios.get(`${API}/replies?page=${page}&limit=25`)
+      setReplies({
+        items: data.items || [],
+        total: data.total || 0,
+        page: data.page || 1,
+        pages: data.pages || 1,
+      })
+    } catch (e) {}
+  }
+
   const fetchQueueActivity = async () => {
     try {
       const { data } = await axios.get(`${API}/queue/activity`)
@@ -716,6 +730,9 @@ export function AppProvider({ children }) {
       case 'logs':
         fetchLogs()
         break
+      case 'replies':
+        fetchReplies()
+        break
       default:
         break
     }
@@ -739,6 +756,11 @@ export function AppProvider({ children }) {
     signature: '',
     provider: 'smtp',
     apiKey: '',
+    imapEnabled: false,
+    imapHost: 'mail.privateemail.com',
+    imapPort: 993,
+    imapUser: '',
+    imapPassword: '',
     host: '',
     port: 465,
     secure: true,
@@ -771,6 +793,11 @@ export function AppProvider({ children }) {
       signature: mb.signature || '',
       provider: mb.provider || 'smtp',
       apiKey: '', // never prefilled — blank means "keep existing"
+      imapEnabled: !!mb.imapEnabled,
+      imapHost: mb.imapHost || 'mail.privateemail.com',
+      imapPort: mb.imapPort || 993,
+      imapUser: mb.imapUser || '',
+      imapPassword: '', // never prefilled — blank means "keep existing"
       host: mb.host || '',
       port: mb.port || 465,
       secure: mb.secure !== false,
@@ -801,6 +828,10 @@ export function AppProvider({ children }) {
         email: mailboxForm.email,
         signature: mailboxForm.signature || '',
         provider: mailboxForm.provider || 'smtp',
+        imapEnabled: !!mailboxForm.imapEnabled,
+        imapHost: mailboxForm.imapHost,
+        imapPort: Number(mailboxForm.imapPort) || 993,
+        imapUser: mailboxForm.imapUser,
         dailyLimit: Number(mailboxForm.dailyLimit),
         hourlyLimit: Number(mailboxForm.hourlyLimit),
         warmupEnabled: !!mailboxForm.warmupEnabled,
@@ -821,6 +852,9 @@ export function AppProvider({ children }) {
         // blank field means "keep the existing password" (never overwrite with '').
         if (mailboxForm.password) payload.password = mailboxForm.password
       }
+      // IMAP reply-detection password — only when typed (blank = keep existing).
+      if (mailboxForm.imapPassword)
+        payload.imapPassword = mailboxForm.imapPassword
 
       if (mailboxForm._id) {
         await axios.put(`${API}/mailboxes/${mailboxForm._id}`, payload)
@@ -851,6 +885,25 @@ export function AppProvider({ children }) {
     } catch (err) {
       alert(
         'Failed to test mailbox: ' + (err.response?.data?.error || err.message),
+      )
+    } finally {
+      setMailboxBusy(false)
+    }
+  }
+
+  // Test a mailbox's IMAP (reply-detection) login. Uses the form's typed values
+  // when editing an unsaved change; otherwise the saved mailbox. Alerts result.
+  const testMailboxImap = async (id) => {
+    setMailboxBusy(true)
+    try {
+      const { data } = await axios.post(`${API}/mailboxes/${id}/imap-test`)
+      alert(
+        `IMAP OK — connected and read the inbox (${data.messages} message(s)).`,
+      )
+      await fetchMailboxes()
+    } catch (err) {
+      alert(
+        'IMAP test failed: ' + (err.response?.data?.error || err.message),
       )
     } finally {
       setMailboxBusy(false)
@@ -1625,6 +1678,9 @@ export function AppProvider({ children }) {
         setQueuePage,
         queueSort,
         sortQueue,
+        replies,
+        fetchReplies,
+        testMailboxImap,
         mailboxForm,
         setMailboxForm,
         mailboxBusy,

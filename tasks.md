@@ -27,6 +27,17 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-039] Reply detection (IMAP) — auto-mark replied + Replies tab
+- priority: P1
+- status: done
+- area: both
+- description: Read inbound replies so you don't watch 3 inboxes. Background IMAP poller (imapWorker, gated by IMAP_WORKER_ENABLED) reads each reply-enabled mailbox INBOX; a message from a known lead auto-marks the lead 'replied' (stops follow-ups) and records it in a new Replies tab. Shared replyService.markLeadReplied (eager cancel of queued follow-ups) also used by the manual button. Mailbox gets IMAP fields + Test-IMAP; new Reply model + GET /replies.
+- acceptance:
+  - [x] Reply from a lead auto-marks them replied + stops follow-ups + shows in Replies tab
+  - [x] Auto-replies/OOO/own-mailbox/non-lead senders skipped; first poll only sets a watermark; deduped by messageId
+  - [x] Mailbox form has IMAP enable+creds+Test; server+client build clean; matching unit-tested; Replies tab renders
+- notes: live IMAP not run (needs real mailbox passwords). Enable: IMAP_WORKER_ENABLED=true + per-mailbox creds + Test IMAP.
+
 ## [T-038] WhatsApp marketing module (ON HOLD — needs opt-in audience)
 - priority: P3
 - status: blocked

@@ -9,6 +9,7 @@ const config = require('./jobs/config')
 const { runCycle } = require('./jobs/upworkMonitor')
 const { connectMongo } = require('./db')
 const { start: startQueueWorker } = require('./workers/schedulerWorker')
+const { start: startImapWorker } = require('./workers/imapWorker')
 const { domainMismatch } = require('./services/deliverabilityService')
 
 // One-shot dry-run: run a single monitor cycle and exit. Does not start the
@@ -69,6 +70,7 @@ app.listen(PORT, () => {
     .then(() => {
       console.log('[mongo] connected')
       startQueueWorker()
+      startImapWorker()
     })
     .catch((e) =>
       console.warn('[mongo] not connected — DB features disabled:', e.message),

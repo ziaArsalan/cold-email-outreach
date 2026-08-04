@@ -27,9 +27,11 @@ const {
 } = require('../services/authService')
 const config = require('../jobs/config')
 const mongoose = require('mongoose')
-const { Lead, List, Template, Mailbox, Campaign, QueuedEmail, SendLog } = require('../models')
+const { Lead, List, Template, Mailbox, Campaign, QueuedEmail, SendLog, Reply } = require('../models')
 const { upsertLeadsIntoList } = require('../services/leadImportService')
 const { fetchGoogleMapsLeads } = require('../services/apifyLeadsService')
+const { markLeadReplied } = require('../services/replyService')
+const imapService = require('../services/imapService')
 const sheetsService = require('../services/sheetsService')
 const { parse } = require('csv-parse/sync')
 const { render } = require('../services/templateService')
@@ -1301,6 +1303,10 @@ const validateMailbox = (body, partial) => {
     if (!req(body.email)) return 'email must be a non-empty string'
   if (body.signature !== undefined && typeof body.signature !== 'string')
     return 'signature must be a string'
+  if (body.imapEnabled !== undefined && typeof body.imapEnabled !== 'boolean')
+    return 'imapEnabled must be a boolean'
+  if (body.imapPort !== undefined && typeof body.imapPort !== 'number')
+    return 'imapPort must be a number'
   if (body.provider !== undefined && !MAILBOX_PROVIDERS.includes(body.provider))
     return `provider must be one of: ${MAILBOX_PROVIDERS.join(', ')}`
 
@@ -1401,6 +1407,10 @@ router.put('/mailboxes/:id', async (req, res) => {
       'warmupEnabled',
       'warmupStartDate',
       'active',
+      'imapEnabled',
+      'imapHost',
+      'imapPort',
+      'imapUser',
     ]
     for (const f of fields) if (body[f] !== undefined) updates[f] = body[f]
     // Only touch the secret fields when a non-empty new value is supplied — a
@@ -1409,6 +1419,8 @@ router.put('/mailboxes/:id', async (req, res) => {
       updates.password = body.password
     if (typeof body.apiKey === 'string' && body.apiKey.trim())
       updates.apiKey = body.apiKey
+    if (typeof body.imapPassword === 'string' && body.imapPassword.trim())
+      updates.imapPassword = body.imapPassword
 
     const doc = await Mailbox.findByIdAndUpdate(req.params.id, updates, {
       new: true,
@@ -1469,6 +1481,82 @@ router.post('/mailboxes/:id/test', async (req, res) => {
     if (w) warnings.push(w)
 
     res.json({ success: verified, mailbox: sanitize(mailbox), warnings })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// POST /api/mailboxes/:id/imap-test — verify IMAP login + INBOX access (reply
+// detection). Read-only; records the health on the mailbox.
+router.post('/mailboxes/:id/imap-test', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let mailbox
+    try {
+      mailbox = await Mailbox.findById(req.params.id).select('+imapPassword +password')
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res.status(404).json({ success: false, error: 'Mailbox not found' })
+      throw err
+    }
+    if (!mailbox)
+      return res.status(404).json({ success: false, error: 'Mailbox not found' })
+
+    try {
+      const { messages } = await imapService.testConnection(mailbox)
+      mailbox.imapLastError = undefined
+      mailbox.imapLastCheckedAt = new Date()
+      await mailbox.save()
+      res.json({ success: true, messages })
+    } catch (err) {
+      mailbox.imapLastError = err.message
+      mailbox.imapLastCheckedAt = new Date()
+      await mailbox.save()
+      res.status(400).json({ success: false, error: err.message })
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
+// GET /api/replies — detected inbound replies (newest first), for the Replies view.
+router.get('/replies', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25))
+    const [docs, total] = await Promise.all([
+      Reply.find()
+        .sort({ receivedAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .populate('leadId', 'email firstName company status')
+        .populate('campaignId', 'name')
+        .populate('mailboxId', 'email')
+        .lean(),
+      Reply.countDocuments(),
+    ])
+    const items = docs.map((r) => ({
+      _id: r._id,
+      fromEmail: r.fromEmail,
+      fromName: r.fromName,
+      subject: r.subject,
+      snippet: r.snippet,
+      receivedAt: r.receivedAt,
+      leadId: r.leadId && r.leadId._id,
+      leadEmail: r.leadId && r.leadId.email,
+      leadStatus: r.leadId && r.leadId.status,
+      campaignName: r.campaignId && r.campaignId.name,
+      mailboxEmail: r.mailboxId && r.mailboxId.email,
+    }))
+    const pages = Math.max(1, Math.ceil(total / limit))
+    res.json({ success: true, items, total, page, pages })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })
   }
@@ -2074,9 +2162,7 @@ router.post('/leads/:id/replied', async (req, res) => {
     if (!lead)
       return res.status(404).json({ success: false, error: 'Lead not found' })
 
-    lead.status = 'replied'
-    lead.replyStatus = (req.body && req.body.note) || 'manual'
-    await lead.save()
+    await markLeadReplied(lead, { note: (req.body && req.body.note) || 'manual' })
     res.json({ success: true, lead })
   } catch (err) {
     res.status(500).json({ success: false, error: err.message })

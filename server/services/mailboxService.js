@@ -136,10 +136,12 @@ const resume = async (mailboxId) => {
   return mailbox
 }
 
-// Strip the password before returning a mailbox to any API consumer.
+// Strip secrets before returning a mailbox to any API consumer.
 const sanitize = (mailbox) => {
   const obj = typeof mailbox.toObject === 'function' ? mailbox.toObject() : { ...mailbox }
   delete obj.password
+  delete obj.apiKey
+  delete obj.imapPassword
   return obj
 }
 

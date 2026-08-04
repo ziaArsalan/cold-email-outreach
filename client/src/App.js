@@ -10,6 +10,7 @@ import TemplateForm from './pages/TemplateForm'
 import UpworkPage from './pages/UpworkPage'
 import SettingsPage from './pages/SettingsPage'
 import LeadsPage from './pages/LeadsPage'
+import RepliesPage from './pages/RepliesPage'
 import PreviewPage from './pages/PreviewPage'
 import CampaignsPage from './pages/CampaignsPage'
 import CampaignForm from './pages/CampaignForm'
@@ -115,6 +116,7 @@ function AppShell() {
             onClick={closeListView}
           />
           <NavItem to='/campaigns' icon='◈' label='Campaigns' />
+          <NavItem to='/replies' icon='✉' label='Replies' />
           <NavItem to='/templates' icon='▤' label='Templates' />
           <NavItem to='/upwork' icon='◆' label='Upwork' />
           <NavItem to='/settings' icon='◎' label='Settings' />
@@ -146,6 +148,7 @@ function AppShell() {
           <Route path='/' element={<Navigate to='/dashboard' replace />} />
           <Route path='/dashboard' element={<DashboardPage />} />
           <Route path='/leads' element={<LeadsPage />} />
+          <Route path='/replies' element={<RepliesPage />} />
 
           <Route path='/campaigns' element={<CampaignsPage />} />
           <Route path='/campaigns/new' element={<CampaignForm />} />

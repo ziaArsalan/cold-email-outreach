@@ -6,6 +6,7 @@ const Campaign = require('./Campaign')
 const QueuedEmail = require('./QueuedEmail')
 const SendLog = require('./SendLog')
 const OutreachSetting = require('./OutreachSetting')
+const Reply = require('./Reply')
 
 module.exports = {
   Lead,
@@ -16,4 +17,5 @@ module.exports = {
   QueuedEmail,
   SendLog,
   OutreachSetting,
+  Reply,
 }
