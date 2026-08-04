@@ -667,6 +667,23 @@ export function AppProvider({ children }) {
     }
   }
 
+  // Re-queue a failed email from the Live Queue so the worker retries it.
+  const resendQueueItem = async (id) => {
+    if (!id) return
+    if (!window.confirm('Re-queue this failed email so it sends again?')) return
+    try {
+      await axios.post(`${API}/queue/${id}/resend`)
+      await Promise.all([
+        fetchQueue(queueStatus, queuePage),
+        fetchQueueActivity(),
+      ])
+    } catch (err) {
+      alert(
+        'Failed to resend: ' + (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
   // Route-driven data loading + tab sync. Runs on login and on every URL change,
   // so a direct visit/refresh to any route loads that section's data (the old
   // per-nav-click fetches are now keyed off the pathname instead). `tab` stays
@@ -1657,6 +1674,7 @@ export function AppProvider({ children }) {
         fetchQueueActivity,
         fetchDashboardAll,
         markLead,
+        resendQueueItem,
         BLANK_MAILBOX,
         BLANK_TEMPLATE,
         openNewMailboxForm,

@@ -27,7 +27,18 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-036] Resend button for failed emails in the dashboard queue
+- priority: P2
+- status: done
+- area: both
+- description: Add a ↻ Resend button in the Live Queue actions column for failed items. POST /api/queue/:id/resend re-queues a failed email (reset to pending, retries 0, scheduledAt/sentAt/error cleared) so the worker retries it. Only 'failed' qualifies (400 otherwise); bounced excluded.
+- acceptance:
+  - [x] Failed queue rows show a ↻ Resend button; clicking re-queues the email
+  - [x] Endpoint resets failed→pending; 400 for non-failed, 404 for unknown id
+  - [x] Server + client build clean; verified in a real browser (button on all failed rows)
+
 ## [T-035] Remove template signature (superseded by per-mailbox signatures)
+
 - priority: P2
 - status: done
 - area: both
@@ -447,6 +458,5 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
   - [x] `APIFY_API_TOKEN` added to `server/.env.example` as a placeholder; never committed with a real value
   - [x] `UPWORK_SOURCE=fixtures` still works unchanged (no regression)
 
-resend button for failure
 gemini quota
 https://ai.google.dev/gemini-api/docs/rate-limits

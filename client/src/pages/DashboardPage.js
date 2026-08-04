@@ -27,6 +27,7 @@ export default function DashboardPage() {
     fetchQueueActivity,
     fetchQueue,
     markLead,
+    resendQueueItem,
   } = useApp()
 
   // Sortable Live Queue column header: click to sort, click again to flip. The
@@ -752,6 +753,14 @@ export default function DashboardPage() {
                     </td>
                     <td>
                       <div className='queue-controls'>
+                        {item.status === 'failed' && (
+                          <button
+                            className='btn-preview'
+                            onClick={() => resendQueueItem(item._id)}
+                          >
+                            ↻ Resend
+                          </button>
+                        )}
                         {item.status === 'sent' && (
                           <button
                             className='btn-preview'

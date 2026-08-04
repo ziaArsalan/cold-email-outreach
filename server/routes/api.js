@@ -1996,6 +1996,49 @@ router.get('/queue', async (req, res) => {
   }
 })
 
+// POST /api/queue/:id/resend — re-queue a FAILED email so the worker tries it
+// again. Resets it to a fresh 'pending' (retries cleared, send ASAP), so the
+// scheduler picks it up on its next tick. Only 'failed' items qualify — a bounce
+// would just re-bounce, and sent/pending/cancelled items must not be touched.
+router.post('/queue/:id/resend', async (req, res) => {
+  if (!dbReady())
+    return res
+      .status(503)
+      .json({ success: false, error: 'Database unavailable' })
+  try {
+    let item
+    try {
+      item = await QueuedEmail.findById(req.params.id)
+    } catch (err) {
+      if (err.name === 'CastError')
+        return res
+          .status(404)
+          .json({ success: false, error: 'Queue item not found' })
+      throw err
+    }
+    if (!item)
+      return res
+        .status(404)
+        .json({ success: false, error: 'Queue item not found' })
+    if (item.status !== 'failed')
+      return res.status(400).json({
+        success: false,
+        error: `Only failed emails can be resent (this one is "${item.status}")`,
+      })
+
+    item.status = 'pending'
+    item.retries = 0
+    item.scheduledAt = null
+    item.sentAt = null
+    item.errorMessage = undefined
+    item.smtpResponse = undefined
+    await item.save()
+    res.json({ success: true, item })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // POST /api/leads/:id/replied — mark a lead as having replied.
 router.post('/leads/:id/replied', async (req, res) => {
   if (!dbReady())

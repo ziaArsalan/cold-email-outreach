@@ -4,6 +4,13 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-08-04 — [T-036] Resend button for failed emails in the dashboard queue
+- **Added:** a **↻ Resend** button in the Live Queue actions column for **failed** items. Clicking it re-queues that specific email so the worker tries it again — resets the item to a fresh `pending` (retries → 0, `scheduledAt`/`sentAt` cleared, error cleared, sends on the next tick). Only `failed` items get the button; `bounced` is intentionally excluded (a bounce would just re-bounce and hurt reputation).
+- **New/changed (server):** `POST /api/queue/:id/resend` — 400 if the item isn't `failed`, 404 if not found; otherwise resets it to pending.
+- **New/changed (client):** `resendQueueItem(id)` handler in `AppContext` (confirm → POST → refresh queue + activity); `DashboardPage` renders the ↻ Resend button for `item.status === 'failed'`.
+- **Area:** both
+- **QA:** PASS — endpoint tested against a throwaway failed item (fake `leadId`, so no real recipient): reset to `pending` with retries 0 and error cleared; resending a non-failed item → **400**, unknown id → **404**; throwaway deleted (no residue, no emails sent). Real-browser: filtering the Live Queue to `failed` shows the **↻ Resend** button on all 4 failed rows. `CI=true` prod build compiled (91.9 kB); localhost QA bundle discarded and prod bundle restored.
+
 ### 2026-08-04 — [T-035] Remove the template signature (superseded by per-mailbox signatures)
 - **Changed:** the **Signature** field is gone from the New/Edit Template form (and from the template Live Preview), now that signatures live on the mailbox (T-034). Saving any template writes an empty signature, so the deprecated field can't be repopulated from the UI.
 - **Data:** cleared `signature` on **all 5 templates** (the 4 used in campaigns — `Restaurants`, `Restaurants Follow 1/2/3` — plus `Default`).
