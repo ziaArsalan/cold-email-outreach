@@ -27,6 +27,21 @@ The queue the `/task` command reads. Add tasks by copying the template. `/task` 
 
 <!-- Add tasks below. Newest priority wins on ties only by being higher in the file. -->
 
+## [T-038] WhatsApp marketing module (ON HOLD — needs opt-in audience)
+- priority: P3
+- status: blocked
+- area: both
+- description: Add a WhatsApp channel for campaigns via the OFFICIAL WhatsApp Cloud API (Meta) — decided over unofficial libs (whatsapp-web.js/Baileys) which are ToS-violating + ban-prone. HELD because WhatsApp requires prior opt-in; cold outreach to scraped/email leads violates Meta's Business Messaging Policy and gets the number banned fast. Resume once an opt-in audience exists.
+- when unblocked, planned phases:
+  - Phase 1 (free test number): WhatsApp "sender" (like a mailbox: Phone-Number-ID + token, select:false); add phone + optInWhatsApp to Lead (Apify Maps already scrapes phone but drops it); WA send service (Cloud API template send); webhook /api/whatsapp/webhook (GET verify + POST statuses/inbound); prove via hello_world to ≤5 verified test numbers.
+  - Phase 2: Campaign.channel (email|whatsapp) reusing schedule/timezone/rate-limits/sticky-sender; WA template entity (approved template + var mapping); queue+worker WA path with WA rate tiers; opt-in gating + opt-out (STOP).
+  - Phase 3: real number, business verification, marketing template approval, permanent System-User token, tier scaling.
+- compliant opt-in bridge idea: put a wa.me link/click in existing EMAIL campaigns → inbound message opens 24h window + records opt-in → future template sends are compliant (email/ads/web = top of funnel → opt-in → WhatsApp warm follow-up).
+- acceptance (Phase 1, when resumed):
+  - [ ] Can register a WA sender + send an approved template to a verified test number
+  - [ ] Webhook records delivery/read + inbound (opt-in) events
+  - [ ] Only opt-in contacts are messageable; opt-out (STOP) clears opt-in
+
 ## [T-037] Gemini quota resilience — 429 backoff + batched intros
 - priority: P1
 - status: done
