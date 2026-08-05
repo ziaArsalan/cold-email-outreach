@@ -7,6 +7,7 @@ const config = require('../config')
 const { Lead, Mailbox, Campaign, QueuedEmail } = require('../models')
 const mailboxService = require('../services/mailboxService')
 const campaignService = require('../services/campaignService')
+const { nextMidnight } = require('../services/dayBoundary')
 const settingsService = require('../services/settingsService')
 const unsubscribeService = require('../services/unsubscribeService')
 const {
@@ -66,8 +67,7 @@ const processOne = async (deps = {}) => {
         (await campaignService.sentTodayCount(campaign._id, now())) >=
           campaign.dailyLimit
       ) {
-        const midnight = new Date(now())
-        midnight.setHours(24, 0, 0, 0)
+        const midnight = nextMidnight(now())
         await reschedule(item, { delayMs: midnight.getTime() - now().getTime() })
         await log('info', 'campaign', 'skip — daily limit reached', refs)
         return { requeued: true }

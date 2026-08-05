@@ -13,6 +13,7 @@ const { render } = require('./templateService')
 const { validateBody } = require('./deliverabilityService')
 const { verifyEmail } = require('./emailVerificationService')
 const settingsService = require('./settingsService')
+const { startOfDay } = require('./dayBoundary')
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
@@ -21,13 +22,6 @@ const badRequest = (message) => {
   const err = new Error(message)
   err.status = 400
   return err
-}
-
-// Local start-of-day for `now`.
-const startOfDay = (now = new Date()) => {
-  const d = new Date(now)
-  d.setHours(0, 0, 0, 0)
-  return d
 }
 
 // The campaign's steps as an ordered array. A campaign with explicit steps →

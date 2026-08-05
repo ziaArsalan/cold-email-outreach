@@ -1,16 +1,11 @@
 const config = require('../config')
 const Mailbox = require('../models/Mailbox')
 const settingsService = require('./settingsService')
+const { nextMidnight } = require('./dayBoundary')
 
 // Rotation, rate-limiting and warmup logic for sending mailboxes.
 
 const EPOCH = new Date(0)
-
-const nextLocalMidnight = (from) => {
-  const d = new Date(from)
-  d.setHours(24, 0, 0, 0)
-  return d
-}
 
 const nextLocalHour = (from) => {
   const d = new Date(from)
@@ -20,13 +15,15 @@ const nextLocalHour = (from) => {
 
 // Reset day/hour counters when their window has elapsed. Mutates the doc.
 // Returns true if anything rolled over (caller persists only when needed).
+// The DAILY boundary follows config.dailyResetTimezone (local midnight); the
+// hourly one is top-of-hour (same instant for whole-hour offsets).
 const resetCountersIfDue = (mailbox) => {
   const now = new Date()
   let rolled = false
 
   if (!mailbox.dayResetAt || now >= mailbox.dayResetAt) {
     mailbox.sentToday = 0
-    mailbox.dayResetAt = nextLocalMidnight(now)
+    mailbox.dayResetAt = nextMidnight(now)
     rolled = true
   }
 

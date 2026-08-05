@@ -4,6 +4,13 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-08-05 — [T-040] Timezone-aware daily send-cap reset
+- **Changed:** the "day" for **daily send caps + counter resets** (mailbox `sentToday`, campaign daily limit, and the reschedule-to-next-reset when a cap is hit) is now computed in a configurable **`DAILY_RESET_TZ`** (default `UTC`) instead of the server's UTC clock. Set it to your zone (e.g. `Asia/Karachi`) so the daily allotment resets at **local midnight** rather than 05:00, which matters especially for overnight send windows whose cap previously reset mid-window. The send *window* was already timezone-aware (T-030); this brings the daily *counter* into the same frame.
+- **New/changed:** `services/dayBoundary.js` (single `startOfDay`/`nextMidnight` in the configured tz, via `Intl`); `mailboxService` (daily counter reset), `campaignService.sentTodayCount`, and `schedulerWorker` (cap reschedule) all use it — keeping the three in agreement. `config.dailyResetTimezone` + `.env.example`.
+- **Area:** server
+- **QA:** modules load; day-boundary math unit-tested at a fixed instant (2026-08-05T13:12Z = 18:12 Karachi): `UTC` → start 08-05T00:00Z / next 08-06T00:00Z (unchanged); `Asia/Karachi` → start 08-04T19:00Z / next 08-05T19:00Z (= local midnight). Default UTC preserves current behavior; effective from the next reset after `DAILY_RESET_TZ` is set.
+- **Note:** it's a single global reset zone (mailboxes are shared across campaigns), so if campaigns ever span multiple zones the daily boundary is one operator-day — fine for coarse daily caps.
+
 ### 2026-08-04 — [T-039b] Reply detection: record replies from non-lead addresses too
 - **Changed:** the poller now records **every genuine reply** — not only those whose sender exactly matches a lead. A reply **from a known lead** still auto-marks them `replied` (stops their follow-ups) as before; a reply **from any other address** (e.g. the contact replies from a personal account, not the address you emailed) is now **recorded in the Replies tab** with the raw sender — it just can't auto-stop a sequence since there's no lead to tie it to. Auto-replies / out-of-office / bounces and mail from your own mailboxes are still filtered out.
 - **New/changed:** `replyService.recordReply` (dedup-safe, `leadId` optional); `markLeadReplied` reuses it; `imapWorker` records unmatched senders instead of skipping them.

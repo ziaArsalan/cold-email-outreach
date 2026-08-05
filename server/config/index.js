@@ -17,6 +17,12 @@ module.exports = {
 
   sendMode: process.env.SEND_MODE || 'warmup',
 
+  // IANA timezone that defines the "day" for daily send caps + counter resets
+  // (mailbox sentToday, campaign daily limit). Default UTC preserves the old
+  // server-clock behavior; set e.g. Asia/Karachi so the daily reset lands at
+  // local midnight instead of 05:00. See services/dayBoundary.js.
+  dailyResetTimezone: process.env.DAILY_RESET_TZ || 'UTC',
+
   delays: {
     warmup: {
       minMs: Number(process.env.DELAY_WARMUP_MIN_MS) || 240000,
