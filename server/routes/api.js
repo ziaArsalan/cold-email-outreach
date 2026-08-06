@@ -1531,8 +1531,15 @@ router.get('/replies', async (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1)
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 25))
+    // Optional filter: replies received by a specific mailbox (inbox).
+    const filter = {}
+    if (req.query.mailboxId) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.mailboxId))
+        return res.status(400).json({ success: false, error: 'Invalid mailboxId' })
+      filter.mailboxId = new mongoose.Types.ObjectId(req.query.mailboxId)
+    }
     const [docs, total] = await Promise.all([
-      Reply.find()
+      Reply.find(filter)
         .sort({ receivedAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -1540,7 +1547,7 @@ router.get('/replies', async (req, res) => {
         .populate('campaignId', 'name')
         .populate('mailboxId', 'email')
         .lean(),
-      Reply.countDocuments(),
+      Reply.countDocuments(filter),
     ])
     const items = docs.map((r) => ({
       _id: r._id,
@@ -1548,6 +1555,7 @@ router.get('/replies', async (req, res) => {
       fromName: r.fromName,
       subject: r.subject,
       snippet: r.snippet,
+      body: r.body || r.snippet || '',
       receivedAt: r.receivedAt,
       leadId: r.leadId && r.leadId._id,
       leadEmail: r.leadId && r.leadId.email,

@@ -115,6 +115,8 @@ export function AppProvider({ children }) {
   const [queueSort, setQueueSort] = useState({ field: 'createdAt', dir: 'desc' })
   // Replies (inbound, detected by the IMAP worker) for the Replies tab.
   const [replies, setReplies] = useState({ items: [], total: 0, page: 1, pages: 1 })
+  const [replyMailbox, setReplyMailbox] = useState('') // '' = all inboxes
+  const [repliesBusy, setRepliesBusy] = useState(false)
 
   // Mailbox management (add/edit/test/pause)
   const [mailboxForm, setMailboxForm] = useState(null) // null = closed; {} = new; {...mb} = editing
@@ -641,16 +643,29 @@ export function AppProvider({ children }) {
     fetchQueue(queueStatus, 1, next)
   }
 
-  const fetchReplies = async (page = 1) => {
+  const fetchReplies = async (page = 1, mailboxId = replyMailbox) => {
+    setRepliesBusy(true)
     try {
-      const { data } = await axios.get(`${API}/replies?page=${page}&limit=25`)
+      const url =
+        `${API}/replies?page=${page}&limit=25` +
+        (mailboxId ? `&mailboxId=${mailboxId}` : '')
+      const { data } = await axios.get(url)
       setReplies({
         items: data.items || [],
         total: data.total || 0,
         page: data.page || 1,
         pages: data.pages || 1,
       })
-    } catch (e) {}
+    } catch (e) {
+    } finally {
+      setRepliesBusy(false)
+    }
+  }
+
+  // Change the inbox filter and refetch from page 1.
+  const filterRepliesByMailbox = (mailboxId) => {
+    setReplyMailbox(mailboxId)
+    fetchReplies(1, mailboxId)
   }
 
   const fetchQueueActivity = async () => {
@@ -1680,6 +1695,9 @@ export function AppProvider({ children }) {
         sortQueue,
         replies,
         fetchReplies,
+        repliesBusy,
+        replyMailbox,
+        filterRepliesByMailbox,
         testMailboxImap,
         mailboxForm,
         setMailboxForm,

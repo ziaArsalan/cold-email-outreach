@@ -4,6 +4,15 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-08-06 — [T-041] Replies tab: inbox filter, full-email viewer, tidier columns
+- **Added:** an **inbox filter** on the Replies tab (dropdown of all mailboxes → server-side `GET /api/replies?mailboxId=` filter) so you can view replies for one mailbox at a time.
+- **Added:** a **"View" button** in the Preview column that opens the **full email** (subject, from, to-inbox, campaign, received + the complete body) in a modal. This required storing the full text — `Reply.body` now holds the full plain-text (capped 20k); the poller saves it. (Replies recorded before this only have the 300-char snippet.)
+- **Changed:** the table now shows exactly **From · Subject · Preview · Campaign · Received · Inbox** (reordered/trimmed per request).
+- **Fixed/clarified refresh:** the ↻ Refresh button now shows a **"Refreshing…"** state and respects the active inbox filter; verified it fires a fresh `/replies` request (it re-reads stored replies — new ones still arrive via the 2-min IMAP poll, not the button).
+- **New/changed:** `Reply.body`; `imapWorker` saves full body; `GET /replies` gains the `mailboxId` filter + returns `body`; `AppContext` gains `replyMailbox`/`repliesBusy`/`filterRepliesByMailbox`; `RepliesPage` rebuilt with the filter, columns, and viewer modal.
+- **Area:** both
+- **QA:** PASS — real-browser (10 live replies): columns match From/Subject/Preview/Campaign/Received/Inbox; inbox filter narrows correctly (jessica@→2, zia@→3, All→10); View opens the full-email modal; Refresh issues a `/replies` request (0→1) with a busy state. `CI=true` prod build compiled (+436 B); localhost QA bundle discarded and prod bundle restored.
+
 ### 2026-08-05 — [T-040] Timezone-aware daily send-cap reset
 - **Changed:** the "day" for **daily send caps + counter resets** (mailbox `sentToday`, campaign daily limit, and the reschedule-to-next-reset when a cap is hit) is now computed in a configurable **`DAILY_RESET_TZ`** (default `UTC`) instead of the server's UTC clock. Set it to your zone (e.g. `Asia/Karachi`) so the daily allotment resets at **local midnight** rather than 05:00, which matters especially for overnight send windows whose cap previously reset mid-window. The send *window* was already timezone-aware (T-030); this brings the daily *counter* into the same frame.
 - **New/changed:** `services/dayBoundary.js` (single `startOfDay`/`nextMidnight` in the configured tz, via `Intl`); `mailboxService` (daily counter reset), `campaignService.sentTodayCount`, and `schedulerWorker` (cap reschedule) all use it — keeping the three in agreement. `config.dailyResetTimezone` + `.env.example`.

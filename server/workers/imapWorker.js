@@ -30,6 +30,7 @@ const pollMailbox = async (mailbox) => {
       fromName: msg.fromName,
       subject: msg.subject,
       snippet: (msg.text || '').slice(0, 300),
+      body: (msg.text || '').slice(0, 20000), // full text (capped) for viewing
       messageId: msg.messageId,
       receivedAt: msg.date,
     }

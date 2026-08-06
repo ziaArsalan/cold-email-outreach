@@ -11,7 +11,8 @@ const replySchema = new mongoose.Schema(
     fromEmail: String,
     fromName: String,
     subject: String,
-    snippet: String, // first ~300 chars of the text body
+    snippet: String, // first ~300 chars, for the table preview
+    body: String, // full plain-text body (capped), for "view full email"
     messageId: String, // RFC Message-ID header (dedupe key)
     receivedAt: Date,
   },
