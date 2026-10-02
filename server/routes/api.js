@@ -131,6 +131,10 @@ router.post('/unsubscribe', async (req, res) => {
 // All routes below this line require a valid token
 router.use(requireAuth)
 
+// Bid Analytics module (Upwork proposal funnel tracking) — its own sub-router,
+// inherits the requireAuth above.
+router.use('/bidding', require('./bidding'))
+
 // Global job state
 let jobState = {
   running: false,

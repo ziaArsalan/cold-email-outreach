@@ -4,6 +4,20 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-10-02 — Bid Analytics module (Upwork proposal tracking)
+- **Added:** a new **Bid Analytics** sidebar entry (`/bid-analytics`) — an internal Upwork proposal funnel tracker, kept entirely separate from the existing Upwork job-monitor tab. One sidebar entry hosts six sub-views via internal tabs: **Dashboard, Proposals, Connects, Budgets, Reports, Settings**.
+  - **Dashboard:** date-range filter (this month / 30 / 90 / year / custom), 15 KPI cards (views/replies/interviews/hires + their rates, revenue, revenue-per-Connect, cost-per-view/reply/interview/hire), 6 Recharts charts (funnel by week, Connects by week, cumulative revenue vs Connects, boosted-vs-organic rates, revenue + hire-rate by lane), boosted-vs-organic and service-lane tables, and a data-driven recommendation panel (each item shows its sample size).
+  - **Proposals:** full CRUD with search/status/lane/type filters, sortable columns, pagination; a grouped Add/Edit form; a detail page with the funnel timeline and one-click status transitions (viewed/replied/interview/offer/hired/no-response/archive) that stamp the stage date.
+  - **Connects:** a Connects ledger (purchase/allocation/refund/bonus/spent/adjustment) with a running balance.
+  - **Budgets:** monthly budgets + targets, a per-month report with utilization and the configured warnings (80% used, boosted over limit, cost-per-hire rising), and copy-to-next-month.
+  - **Reports:** profile/template/portfolio/client-quality breakdowns, a time-to-apply report, and **CSV import/export** — import dedupes on jobUrl+submittedAt and validates each row; export escapes formula characters (`= + - @`) to prevent spreadsheet injection.
+  - **Settings:** manage service lanes (8 defaults seeded; create/rename/archive/delete), proposal templates, and profile variants.
+- **Compliance:** manual / CSV / official-API data entry only — **no Upwork scraping or automation, and no Upwork credentials/cookies/tokens are ever stored.** Owner-only behind the existing JWT auth; deletes/imports/exports write a `BidAuditLog`. All metrics guard against divide-by-zero and render **N/A**.
+- **Stack:** built on the project's real stack (Mongoose + Express + React/CRA + **Recharts**, newly added), not the Postgres/Prisma the original brief assumed; single-owner auth, so no `userId` multi-tenancy.
+- **New/changed:** models `Proposal`, `ServiceLane`, `ConnectsTransaction`, `Budget`, `BidTemplate`, `ProfileVariant`, `BidAuditLog` (+ `models/index.js`); `services/biddingService.js` (analytics engine); `routes/bidding.js` mounted in `routes/api.js`; client `pages/bidding/*` + `AppContext`/`utils`/`App.js`; test suite `scripts/testBidding.js` (`npm run test:bidding`); docs `.claude/docs/BID-ANALYTICS.md`.
+- **Area:** both
+- **QA:** PASS — committed suite 26/26 (analytics math, N/A guards, recommendations, connects balance, budget warnings, auth rejection, lane dedupe, CRUD, validation, CSV injection-safe export) via a throwaway local DB; `CI=true` prod build compiles; real-browser pass (isolated instance on a private port + throwaway DB) covered login → add proposal → list → detail → Mark hired (date stamped) → dashboard KPIs/charts → Connects balance → all sub-views render.
+
 ### 2026-08-06 — [T-041] Replies tab: inbox filter, full-email viewer, tidier columns
 - **Added:** an **inbox filter** on the Replies tab (dropdown of all mailboxes → server-side `GET /api/replies?mailboxId=` filter) so you can view replies for one mailbox at a time.
 - **Added:** a **"View" button** in the Preview column that opens the **full email** (subject, from, to-inbox, campaign, received + the complete body) in a modal. This required storing the full text — `Reply.body` now holds the full plain-text (capped 20k); the poller saves it. (Replies recorded before this only have the 300-char snippet.)

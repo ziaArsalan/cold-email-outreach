@@ -7,7 +7,12 @@ import React, {
 } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import axios, { API, setUnauthorizedHandler } from '../api'
-import { BLANK_CAMPAIGN } from '../utils'
+import {
+  BLANK_CAMPAIGN,
+  BLANK_PROPOSAL,
+  toDateInput,
+  presetRange,
+} from '../utils'
 
 export const AppContext = createContext(null)
 
@@ -117,6 +122,46 @@ export function AppProvider({ children }) {
   const [replies, setReplies] = useState({ items: [], total: 0, page: 1, pages: 1 })
   const [replyMailbox, setReplyMailbox] = useState('') // '' = all inboxes
   const [repliesBusy, setRepliesBusy] = useState(false)
+
+  // ── Bid Analytics (Upwork proposal tracking) ──
+  const [proposals, setProposals] = useState({
+    items: [],
+    total: 0,
+    page: 1,
+    pages: 1,
+  })
+  const [proposalsLoading, setProposalsLoading] = useState(false)
+  const [lanes, setLanes] = useState([])
+  const [proposalFilters, setProposalFilters] = useState({
+    q: '',
+    status: '',
+    lane: '',
+    type: '',
+    sort: 'submittedAt',
+    dir: 'desc',
+    page: 1,
+  })
+  const [proposalForm, setProposalForm] = useState(null) // null = closed
+  const [proposalBusy, setProposalBusy] = useState(false)
+  const [proposalDetail, setProposalDetail] = useState(null)
+  const [proposalDetailLoading, setProposalDetailLoading] = useState(false)
+  const [newLaneName, setNewLaneName] = useState('')
+  // Which Bid Analytics sub-view is active (internal tabs, one sidebar entry).
+  const [bidTab, setBidTab] = useState('dashboard')
+  const [analyticsRange, setAnalyticsRange] = useState({
+    preset: 'Last 30 days',
+    ...presetRange('Last 30 days'),
+  })
+  const [bidAnalytics, setBidAnalytics] = useState(null)
+  const [bidAnalyticsLoading, setBidAnalyticsLoading] = useState(false)
+  const [recommendations, setRecommendations] = useState([])
+  const [connects, setConnects] = useState({ items: [], balance: null })
+  const [budgets, setBudgets] = useState([])
+  const [budgetReports, setBudgetReports] = useState({}) // keyed by budget id
+  const [bidTemplates, setBidTemplates] = useState([])
+  const [profileVariants, setProfileVariants] = useState([])
+  const [importResult, setImportResult] = useState(null)
+  const [bidImportBusy, setBidImportBusy] = useState(false)
 
   // Mailbox management (add/edit/test/pause)
   const [mailboxForm, setMailboxForm] = useState(null) // null = closed; {} = new; {...mb} = editing
@@ -747,6 +792,9 @@ export function AppProvider({ children }) {
         break
       case 'replies':
         fetchReplies()
+        break
+      case 'bid-analytics':
+        fetchBiddingIndex()
         break
       default:
         break
@@ -1571,6 +1619,562 @@ export function AppProvider({ children }) {
     }
   }, [upworkSettings])
 
+  // ── Bid Analytics handlers (Upwork proposal tracking) ──
+
+  const fetchLanes = async () => {
+    try {
+      const { data } = await axios.get(`${API}/bidding/lanes`)
+      setLanes(data.lanes || [])
+    } catch (e) {}
+  }
+
+  const fetchProposals = async (filters = proposalFilters) => {
+    setProposalsLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: String(filters.page || 1),
+        limit: '25',
+        sort: filters.sort || 'submittedAt',
+        dir: filters.dir || 'desc',
+      })
+      if (filters.q) params.set('q', filters.q)
+      if (filters.status) params.set('status', filters.status)
+      if (filters.lane) params.set('lane', filters.lane)
+      if (filters.type) params.set('type', filters.type)
+      const { data } = await axios.get(
+        `${API}/bidding/proposals?${params.toString()}`,
+      )
+      setProposals({
+        items: data.items || [],
+        total: data.total || 0,
+        page: data.page || 1,
+        pages: data.pages || 1,
+      })
+    } catch (e) {
+    } finally {
+      setProposalsLoading(false)
+    }
+  }
+
+  // Apply a filter/sort change and refetch from page 1 (except an explicit page
+  // change). Server-side filtering, so every change refetches.
+  const changeProposalFilter = (patch) => {
+    setProposalFilters((f) => {
+      const next = { ...f, ...patch }
+      if (!('page' in patch)) next.page = 1
+      fetchProposals(next)
+      return next
+    })
+  }
+
+  // Toggle sort on a column: same field flips direction; a new field starts desc.
+  const sortProposals = (field) => {
+    changeProposalFilter(
+      proposalFilters.sort === field
+        ? { dir: proposalFilters.dir === 'asc' ? 'desc' : 'asc' }
+        : { sort: field, dir: 'desc' },
+    )
+  }
+
+  const openNewProposal = () => setProposalForm({ ...BLANK_PROPOSAL })
+
+  const openEditProposal = (p) =>
+    setProposalForm({
+      _id: p._id,
+      submittedAt: toDateInput(p.submittedAt),
+      jobPostedAt: toDateInput(p.jobPostedAt),
+      jobUrl: p.jobUrl || '',
+      jobTitle: p.jobTitle || '',
+      jobCategory: p.jobCategory || '',
+      serviceLane: p.serviceLane || '',
+      jobType: p.jobType || '',
+      budgetType: p.budgetType || 'UNKNOWN',
+      jobBudgetMin: p.jobBudgetMin ?? '',
+      jobBudgetMax: p.jobBudgetMax ?? '',
+      hourlyRateBid: p.hourlyRateBid ?? '',
+      fixedPriceBid: p.fixedPriceBid ?? '',
+      requiredSkills: Array.isArray(p.requiredSkills)
+        ? p.requiredSkills.join(', ')
+        : '',
+      proposalType: p.proposalType || 'ORGANIC',
+      connectsUsed: p.connectsUsed ?? '',
+      boostConnects: p.boostConnects ?? '',
+      profileTitleUsed: p.profileTitleUsed || '',
+      proposalTemplate: p.proposalTemplate || '',
+      portfolioItemShared: p.portfolioItemShared || '',
+      proposalOpening: p.proposalOpening || '',
+      proposalStatus: p.proposalStatus || 'SUBMITTED',
+      clientName: p.clientName || '',
+      clientCountry: p.clientCountry || '',
+      clientTotalSpent: p.clientTotalSpent ?? '',
+      clientHireRate: p.clientHireRate ?? '',
+      clientHasVerifiedPayment: !!p.clientHasVerifiedPayment,
+      contractValue: p.contractValue ?? '',
+      contractCurrency: p.contractCurrency || 'USD',
+      contractType: p.contractType || '',
+      hiredAt: toDateInput(p.hiredAt),
+      followUpDate: toDateInput(p.followUpDate),
+      notes: p.notes || '',
+    })
+
+  const closeProposalForm = () => setProposalForm(null)
+
+  // Build the API payload from the form: coerce numeric strings to numbers (or
+  // drop empty ones), split skills, pass dates through as-is (the server parses).
+  const buildProposalPayload = (f) => {
+    const num = (v) => (v === '' || v === null || v === undefined ? undefined : Number(v))
+    const str = (v) => (v && String(v).trim() ? String(v).trim() : undefined)
+    const payload = {
+      jobTitle: (f.jobTitle || '').trim(),
+      serviceLane: (f.serviceLane || '').trim(),
+      submittedAt: f.submittedAt || undefined,
+      jobPostedAt: f.jobPostedAt || undefined,
+      jobUrl: str(f.jobUrl),
+      jobCategory: str(f.jobCategory),
+      jobType: str(f.jobType),
+      budgetType: f.budgetType || 'UNKNOWN',
+      jobBudgetMin: num(f.jobBudgetMin),
+      jobBudgetMax: num(f.jobBudgetMax),
+      hourlyRateBid: num(f.hourlyRateBid),
+      fixedPriceBid: num(f.fixedPriceBid),
+      requiredSkills: (f.requiredSkills || '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+      proposalType: f.proposalType || 'ORGANIC',
+      connectsUsed: num(f.connectsUsed) ?? 0,
+      boostConnects: num(f.boostConnects) ?? 0,
+      profileTitleUsed: str(f.profileTitleUsed),
+      proposalTemplate: str(f.proposalTemplate),
+      portfolioItemShared: str(f.portfolioItemShared),
+      proposalOpening: str(f.proposalOpening),
+      proposalStatus: f.proposalStatus || 'SUBMITTED',
+      clientName: str(f.clientName),
+      clientCountry: str(f.clientCountry),
+      clientTotalSpent: num(f.clientTotalSpent),
+      clientHireRate: num(f.clientHireRate),
+      clientHasVerifiedPayment: !!f.clientHasVerifiedPayment,
+      contractValue: num(f.contractValue),
+      contractCurrency: f.contractCurrency || 'USD',
+      contractType: str(f.contractType),
+      followUpDate: f.followUpDate || undefined,
+      notes: str(f.notes),
+    }
+    if (f.hiredAt) payload.hiredAt = f.hiredAt
+    return payload
+  }
+
+  // Client-side guard mirroring the server's validation (fast feedback). Returns
+  // an error string or null.
+  const validateProposalForm = (f) => {
+    if (!f.jobTitle || !f.jobTitle.trim()) return 'Job title is required'
+    if (!f.serviceLane || !f.serviceLane.trim())
+      return 'Service lane is required'
+    if (f.jobUrl && f.jobUrl.trim()) {
+      try {
+        const u = new URL(f.jobUrl.trim())
+        if (u.protocol !== 'http:' && u.protocol !== 'https:')
+          return 'Job URL must be a valid http(s) URL'
+      } catch {
+        return 'Job URL must be a valid http(s) URL'
+      }
+    }
+    const cu = Number(f.connectsUsed || 0)
+    const bc = Number(f.boostConnects || 0)
+    if (cu < 0) return 'Connects used cannot be negative'
+    if (bc < 0) return 'Boost Connects cannot be negative'
+    if (bc > cu) return 'Boost Connects cannot exceed total Connects used'
+    if (f.contractValue !== '' && Number(f.contractValue) < 0)
+      return 'Contract value cannot be negative'
+    if (f.proposalStatus === 'HIRED' && !f.hiredAt)
+      return 'Hired status requires a hired date'
+    return null
+  }
+
+  const saveProposal = async (e) => {
+    if (e) e.preventDefault()
+    if (!proposalForm) return false
+    const err = validateProposalForm(proposalForm)
+    if (err) {
+      alert(err)
+      return false
+    }
+    setProposalBusy(true)
+    try {
+      const payload = buildProposalPayload(proposalForm)
+      if (proposalForm._id) {
+        await axios.put(
+          `${API}/bidding/proposals/${proposalForm._id}`,
+          payload,
+        )
+      } else {
+        await axios.post(`${API}/bidding/proposals`, payload)
+      }
+      setProposalForm(null)
+      await fetchProposals()
+      return true
+    } catch (e2) {
+      alert(
+        'Failed to save proposal: ' +
+          (e2.response?.data?.error || e2.message),
+      )
+      return false
+    } finally {
+      setProposalBusy(false)
+    }
+  }
+
+  const deleteProposal = async (p) => {
+    if (
+      !window.confirm(
+        `Delete proposal "${p.jobTitle}"? This cannot be undone.`,
+      )
+    )
+      return
+    try {
+      await axios.delete(`${API}/bidding/proposals/${p._id}`)
+      await fetchProposals()
+      // If its detail page is open, go back to the list.
+      if (proposalDetail && proposalDetail._id === p._id) {
+        setProposalDetail(null)
+        navigate('/bid-analytics')
+      }
+    } catch (err) {
+      alert(
+        'Failed to delete proposal: ' +
+          (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  const fetchProposal = async (id) => {
+    setProposalDetailLoading(true)
+    try {
+      const { data } = await axios.get(`${API}/bidding/proposals/${id}`)
+      setProposalDetail(data.proposal || null)
+    } catch (e) {
+      setProposalDetail(null)
+    } finally {
+      setProposalDetailLoading(false)
+    }
+  }
+
+  // One-click funnel transition from the detail page. Refreshes the open detail
+  // and the list so both reflect the new status.
+  const markProposalStatus = async (id, status) => {
+    try {
+      const { data } = await axios.post(
+        `${API}/bidding/proposals/${id}/status`,
+        { status },
+      )
+      if (data.proposal) setProposalDetail(data.proposal)
+      fetchProposals()
+    } catch (err) {
+      alert(
+        'Failed to update status: ' +
+          (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  // ── Service lane management ──
+  const createLane = async (e) => {
+    if (e) e.preventDefault()
+    const name = newLaneName.trim()
+    if (!name) return
+    try {
+      await axios.post(`${API}/bidding/lanes`, { name })
+      setNewLaneName('')
+      await fetchLanes()
+    } catch (err) {
+      alert(
+        'Failed to add lane: ' + (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  const renameLane = async (lane) => {
+    const name = window.prompt('Rename lane:', lane.name)
+    if (name === null) return
+    if (!name.trim()) return
+    try {
+      await axios.put(`${API}/bidding/lanes/${lane._id}`, { name: name.trim() })
+      await fetchLanes()
+    } catch (err) {
+      alert(
+        'Failed to rename lane: ' + (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  const toggleLaneArchived = async (lane) => {
+    try {
+      await axios.put(`${API}/bidding/lanes/${lane._id}`, {
+        archived: !lane.archived,
+      })
+      await fetchLanes()
+    } catch (err) {
+      alert(
+        'Failed to update lane: ' + (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  const deleteLane = async (lane) => {
+    if (
+      !window.confirm(
+        `Delete lane "${lane.name}"? Existing proposals keep their stored lane name.`,
+      )
+    )
+      return
+    try {
+      await axios.delete(`${API}/bidding/lanes/${lane._id}`)
+      await fetchLanes()
+    } catch (err) {
+      alert(
+        'Failed to delete lane: ' + (err.response?.data?.error || err.message),
+      )
+    }
+  }
+
+  // ── Dashboard analytics + recommendations ──
+  const fetchBidAnalytics = async (range = analyticsRange) => {
+    setBidAnalyticsLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (range.from) params.set('from', range.from)
+      if (range.to) params.set('to', range.to)
+      const { data } = await axios.get(
+        `${API}/bidding/analytics?${params.toString()}`,
+      )
+      setBidAnalytics(data.analytics || null)
+    } catch (e) {
+      setBidAnalytics(null)
+    } finally {
+      setBidAnalyticsLoading(false)
+    }
+  }
+
+  const fetchRecommendations = async () => {
+    try {
+      const { data } = await axios.get(`${API}/bidding/recommendations`)
+      setRecommendations(data.recommendations || [])
+    } catch (e) {}
+  }
+
+  // Change the date-range preset (or custom from/to) and refetch analytics.
+  const changeAnalyticsRange = (patch) => {
+    setAnalyticsRange((r) => {
+      let next = { ...r, ...patch }
+      if (patch.preset && patch.preset !== 'Custom') {
+        next = { preset: patch.preset, ...presetRange(patch.preset) }
+      }
+      fetchBidAnalytics(next)
+      return next
+    })
+  }
+
+  const fetchBiddingIndex = async () => {
+    await Promise.all([
+      fetchLanes(),
+      fetchProposals(),
+      fetchBidAnalytics(),
+      fetchRecommendations(),
+    ])
+  }
+
+  // ── Connects ledger ──
+  const fetchConnects = async () => {
+    try {
+      const { data } = await axios.get(`${API}/bidding/connects`)
+      setConnects({ items: data.items || [], balance: data.balance || null })
+    } catch (e) {}
+  }
+
+  const createConnects = async (payload) => {
+    try {
+      await axios.post(`${API}/bidding/connects`, payload)
+      await fetchConnects()
+      return true
+    } catch (err) {
+      alert(
+        'Failed to add transaction: ' +
+          (err.response?.data?.error || err.message),
+      )
+      return false
+    }
+  }
+
+  const deleteConnects = async (id) => {
+    if (!window.confirm('Delete this Connects transaction?')) return
+    try {
+      await axios.delete(`${API}/bidding/connects/${id}`)
+      await fetchConnects()
+    } catch (err) {
+      alert('Failed to delete: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  // ── Budgets ──
+  const fetchBudgets = async () => {
+    try {
+      const { data } = await axios.get(`${API}/bidding/budgets`)
+      setBudgets(data.budgets || [])
+    } catch (e) {}
+  }
+
+  const fetchBudgetReport = async (id) => {
+    try {
+      const { data } = await axios.get(`${API}/bidding/budgets/${id}/report`)
+      setBudgetReports((r) => ({ ...r, [id]: data.report }))
+    } catch (e) {}
+  }
+
+  const saveBudget = async (payload, id) => {
+    try {
+      if (id) await axios.put(`${API}/bidding/budgets/${id}`, payload)
+      else await axios.post(`${API}/bidding/budgets`, payload)
+      await fetchBudgets()
+      return true
+    } catch (err) {
+      alert(
+        'Failed to save budget: ' + (err.response?.data?.error || err.message),
+      )
+      return false
+    }
+  }
+
+  const deleteBudget = async (b) => {
+    if (!window.confirm(`Delete the ${b.month}/${b.year} budget?`)) return
+    try {
+      await axios.delete(`${API}/bidding/budgets/${b._id}`)
+      await fetchBudgets()
+    } catch (err) {
+      alert('Failed to delete: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  const copyBudgetNext = async (b) => {
+    try {
+      await axios.post(`${API}/bidding/budgets/${b._id}/copy-next`)
+      await fetchBudgets()
+      alert('Copied to the next month.')
+    } catch (err) {
+      alert('Failed to copy: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  // ── Bid templates & profile variants ──
+  const fetchBidTemplates = async () => {
+    try {
+      const { data } = await axios.get(`${API}/bidding/bid-templates`)
+      setBidTemplates(data.items || [])
+    } catch (e) {}
+  }
+  const saveBidTemplate = async (payload, id) => {
+    try {
+      if (id) await axios.put(`${API}/bidding/bid-templates/${id}`, payload)
+      else await axios.post(`${API}/bidding/bid-templates`, payload)
+      await fetchBidTemplates()
+      return true
+    } catch (err) {
+      alert('Failed to save: ' + (err.response?.data?.error || err.message))
+      return false
+    }
+  }
+  const deleteBidTemplate = async (t) => {
+    if (!window.confirm(`Delete template "${t.name}"?`)) return
+    try {
+      await axios.delete(`${API}/bidding/bid-templates/${t._id}`)
+      await fetchBidTemplates()
+    } catch (err) {
+      alert('Failed to delete: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  const fetchProfileVariants = async () => {
+    try {
+      const { data } = await axios.get(`${API}/bidding/profile-variants`)
+      setProfileVariants(data.items || [])
+    } catch (e) {}
+  }
+  const saveProfileVariant = async (payload, id) => {
+    try {
+      if (id) await axios.put(`${API}/bidding/profile-variants/${id}`, payload)
+      else await axios.post(`${API}/bidding/profile-variants`, payload)
+      await fetchProfileVariants()
+      return true
+    } catch (err) {
+      alert('Failed to save: ' + (err.response?.data?.error || err.message))
+      return false
+    }
+  }
+  const deleteProfileVariant = async (v) => {
+    if (!window.confirm(`Delete profile variant "${v.title}"?`)) return
+    try {
+      await axios.delete(`${API}/bidding/profile-variants/${v._id}`)
+      await fetchProfileVariants()
+    } catch (err) {
+      alert('Failed to delete: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  // ── CSV import / export ──
+  const importProposalsCsv = (file) => {
+    if (!file) return
+    setBidImportBusy(true)
+    setImportResult(null)
+    const reader = new FileReader()
+    reader.onload = async () => {
+      try {
+        const { data } = await axios.post(`${API}/bidding/proposals/import`, {
+          csv: reader.result,
+        })
+        setImportResult(data.summary)
+        await fetchProposals()
+      } catch (err) {
+        alert(
+          'CSV import failed: ' + (err.response?.data?.error || err.message),
+        )
+      } finally {
+        setBidImportBusy(false)
+      }
+    }
+    reader.onerror = () => {
+      alert('Could not read file')
+      setBidImportBusy(false)
+    }
+    reader.readAsText(file)
+  }
+
+  // Download a CSV via axios (so the Bearer token is sent) and trigger a save.
+  const downloadCsv = async (path, filename) => {
+    try {
+      const res = await axios.get(`${API}/bidding/${path}`, {
+        responseType: 'blob',
+      })
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Export failed: ' + (err.response?.data?.error || err.message))
+    }
+  }
+
+  const exportProposals = (filters = {}) => {
+    const params = new URLSearchParams()
+    for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v)
+    downloadCsv(`proposals/export.csv?${params.toString()}`, 'proposals-export.csv')
+  }
+
+  const downloadImportTemplate = () =>
+    downloadCsv('proposals/import-template.csv', 'proposals-import-template.csv')
+
   return (
     <AppContext.Provider
       value={{
@@ -1794,6 +2398,70 @@ export function AppProvider({ children }) {
         saveOutreachSettings,
         generateCover,
         testUpworkQuery,
+        // ── Bid Analytics ──
+        proposals,
+        proposalsLoading,
+        lanes,
+        proposalFilters,
+        setProposalFilters,
+        proposalForm,
+        setProposalForm,
+        proposalBusy,
+        proposalDetail,
+        proposalDetailLoading,
+        newLaneName,
+        setNewLaneName,
+        fetchLanes,
+        fetchProposals,
+        fetchBiddingIndex,
+        changeProposalFilter,
+        sortProposals,
+        openNewProposal,
+        openEditProposal,
+        closeProposalForm,
+        saveProposal,
+        deleteProposal,
+        fetchProposal,
+        markProposalStatus,
+        createLane,
+        renameLane,
+        toggleLaneArchived,
+        deleteLane,
+        // analytics / reports / connects / budgets / templates / import-export
+        bidTab,
+        setBidTab,
+        analyticsRange,
+        changeAnalyticsRange,
+        bidAnalytics,
+        bidAnalyticsLoading,
+        recommendations,
+        fetchBidAnalytics,
+        fetchRecommendations,
+        connects,
+        fetchConnects,
+        createConnects,
+        deleteConnects,
+        budgets,
+        budgetReports,
+        fetchBudgets,
+        fetchBudgetReport,
+        saveBudget,
+        deleteBudget,
+        copyBudgetNext,
+        bidTemplates,
+        fetchBidTemplates,
+        saveBidTemplate,
+        deleteBidTemplate,
+        profileVariants,
+        fetchProfileVariants,
+        saveProfileVariant,
+        deleteProfileVariant,
+        importResult,
+        setImportResult,
+        bidImportBusy,
+        importProposalsCsv,
+        exportProposals,
+        downloadImportTemplate,
       }}
     >
       {children}

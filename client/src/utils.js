@@ -162,6 +162,139 @@ export const scheduleSummary = (schedule) => {
 // Compact local date-time for queue/mailbox tables; em dash when absent.
 export const fmtDate = (d) => (d ? new Date(d).toLocaleString() : '—')
 
+// ── Bid Analytics (Upwork proposal tracking) ──
+
+export const PROPOSAL_STATUSES = [
+  'DRAFT',
+  'SUBMITTED',
+  'VIEWED',
+  'CLIENT_REPLIED',
+  'INTERVIEW',
+  'OFFER',
+  'HIRED',
+  'DECLINED',
+  'CLIENT_HIRED_OTHER',
+  'NO_RESPONSE',
+  'WITHDRAWN',
+  'ARCHIVED',
+]
+
+// Human labels for the status enum (used in dropdowns / badges).
+export const PROPOSAL_STATUS_LABELS = {
+  DRAFT: 'Draft',
+  SUBMITTED: 'Submitted',
+  VIEWED: 'Viewed',
+  CLIENT_REPLIED: 'Client replied',
+  INTERVIEW: 'Interview',
+  OFFER: 'Offer',
+  HIRED: 'Hired',
+  DECLINED: 'Declined',
+  CLIENT_HIRED_OTHER: 'Client hired other',
+  NO_RESPONSE: 'No response',
+  WITHDRAWN: 'Withdrawn',
+  ARCHIVED: 'Archived',
+}
+
+// Format any date value for an <input type="date"> (YYYY-MM-DD), or '' if absent.
+export const toDateInput = (d) => {
+  if (!d) return ''
+  const dt = new Date(d)
+  if (isNaN(dt.getTime())) return ''
+  return dt.toISOString().slice(0, 10)
+}
+
+// Compact local date (no time) for proposal tables; em dash when absent.
+export const fmtDay = (d) => (d ? new Date(d).toLocaleDateString() : '—')
+
+// Format a 0..1 rate as a percentage, or 'N/A' when null/undefined (the server
+// returns null for any metric whose denominator was zero).
+export const pct = (v) =>
+  v === null || v === undefined || isNaN(v) ? 'N/A' : `${(v * 100).toFixed(1)}%`
+
+// Format a numeric metric, or 'N/A' when null (zero-denominator). Rounds to at
+// most `dp` decimals.
+export const numOrNA = (v, dp = 2) =>
+  v === null || v === undefined || isNaN(v)
+    ? 'N/A'
+    : Number(v).toLocaleString(undefined, { maximumFractionDigits: dp })
+
+// Format a money amount with a currency code, or 'N/A' when null.
+export const money = (v, ccy = 'USD') =>
+  v === null || v === undefined || isNaN(v)
+    ? 'N/A'
+    : `${ccy} ${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+
+// Date-range presets for the dashboard filter → { from, to } as YYYY-MM-DD.
+export const DATE_PRESETS = [
+  'This month',
+  'Last 30 days',
+  'Last 90 days',
+  'This year',
+  'All time',
+  'Custom',
+]
+export const presetRange = (preset) => {
+  const today = new Date()
+  const iso = (d) => d.toISOString().slice(0, 10)
+  const start = new Date(today)
+  switch (preset) {
+    case 'This month':
+      return { from: iso(new Date(today.getFullYear(), today.getMonth(), 1)), to: iso(today) }
+    case 'Last 30 days':
+      start.setDate(start.getDate() - 30)
+      return { from: iso(start), to: iso(today) }
+    case 'Last 90 days':
+      start.setDate(start.getDate() - 90)
+      return { from: iso(start), to: iso(today) }
+    case 'This year':
+      return { from: iso(new Date(today.getFullYear(), 0, 1)), to: iso(today) }
+    case 'All time':
+    default:
+      return { from: '', to: '' }
+  }
+}
+
+export const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+// Default state for the Add Proposal form. Numbers are strings here (controlled
+// inputs); the save handler coerces them. requiredSkills is a comma string.
+export const BLANK_PROPOSAL = {
+  submittedAt: new Date().toISOString().slice(0, 10),
+  jobPostedAt: '',
+  jobUrl: '',
+  jobTitle: '',
+  jobCategory: '',
+  serviceLane: '',
+  jobType: '',
+  budgetType: 'UNKNOWN',
+  jobBudgetMin: '',
+  jobBudgetMax: '',
+  hourlyRateBid: '',
+  fixedPriceBid: '',
+  requiredSkills: '',
+  proposalType: 'ORGANIC',
+  connectsUsed: '',
+  boostConnects: '',
+  profileTitleUsed: '',
+  proposalTemplate: '',
+  portfolioItemShared: '',
+  proposalOpening: '',
+  proposalStatus: 'SUBMITTED',
+  clientName: '',
+  clientCountry: '',
+  clientTotalSpent: '',
+  clientHireRate: '',
+  clientHasVerifiedPayment: false,
+  contractValue: '',
+  contractCurrency: 'USD',
+  contractType: '',
+  followUpDate: '',
+  notes: '',
+}
+
 // Truncate long strings for table cells (full value shown via title attr).
 export const trunc = (s, n = 40) =>
   s && s.length > n ? s.slice(0, n) + '…' : s || ''
