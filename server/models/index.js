@@ -15,6 +15,12 @@ const Budget = require('./Budget')
 const BidTemplate = require('./BidTemplate')
 const ProfileVariant = require('./ProfileVariant')
 const BidAuditLog = require('./BidAuditLog')
+// ── Follow-ups module (member task tracking + WhatsApp reminders) ──
+const Member = require('./Member')
+const Task = require('./Task')
+const TaskAssignment = require('./TaskAssignment')
+const ReminderLog = require('./ReminderLog')
+const FollowupSetting = require('./FollowupSetting')
 
 module.exports = {
   Lead,
@@ -33,4 +39,9 @@ module.exports = {
   BidTemplate,
   ProfileVariant,
   BidAuditLog,
+  Member,
+  Task,
+  TaskAssignment,
+  ReminderLog,
+  FollowupSetting,
 }

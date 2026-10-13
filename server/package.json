@@ -7,7 +7,9 @@
     "dev": "nodemon index.js",
     "monitor:once": "node index.js --once",
     "import:sheets": "node scripts/importFromSheets.js",
-    "test:bidding": "node scripts/testBidding.js"
+    "test:bidding": "node scripts/testBidding.js",
+    "test:followups": "node scripts/testFollowups.js",
+    "seed:followups": "node scripts/seedFollowups.js"
   },
   "dependencies": {
     "apify-client": "^2.23.4",

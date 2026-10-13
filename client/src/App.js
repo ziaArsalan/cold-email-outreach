@@ -17,6 +17,7 @@ import CampaignForm from './pages/CampaignForm'
 import BidAnalyticsPage from './pages/bidding/BidAnalyticsPage'
 import ProposalForm from './pages/bidding/ProposalForm'
 import ProposalDetail from './pages/bidding/ProposalDetail'
+import FollowupsPage from './pages/followups/FollowupsPage'
 
 export default function App() {
   // BrowserRouter wraps the provider so context handlers (e.g. openPreview) can
@@ -123,6 +124,7 @@ function AppShell() {
           <NavItem to='/templates' icon='▤' label='Templates' />
           <NavItem to='/upwork' icon='◆' label='Upwork' />
           <NavItem to='/bid-analytics' icon='◭' label='Bid Analytics' />
+          <NavItem to='/followups' icon='☑' label='Follow-ups' />
           <NavItem to='/settings' icon='◎' label='Settings' />
           <NavItem to='/logs' icon='▦' label='Logs' />
           {tab === 'preview' && (
@@ -169,6 +171,7 @@ function AppShell() {
           <Route path='/bid-analytics/new' element={<ProposalForm />} />
           <Route path='/bid-analytics/:id' element={<ProposalDetail />} />
           <Route path='/bid-analytics/:id/edit' element={<ProposalForm />} />
+          <Route path='/followups' element={<FollowupsPage />} />
           <Route path='/settings' element={<SettingsPage />} />
           <Route path='/logs' element={<LogsPage />} />
 

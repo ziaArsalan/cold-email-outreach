@@ -74,4 +74,53 @@ module.exports = {
     blockDisposable: process.env.EMAIL_VERIFY_BLOCK_DISPOSABLE !== 'false',
     blockRoleBased: process.env.EMAIL_VERIFY_BLOCK_ROLE_BASED !== 'false',
   },
+
+  // ── Follow-ups module (member task tracking + WhatsApp reminders) ──
+  // Member recurring-task tracking. This is UNRELATED to campaign follow-up
+  // sequences (Campaign.steps / followupDelayUnitMs above) despite the name.
+  // Admin-togglable runtime bits (kill switch, throttle, schedule, active
+  // provider) live in the FollowupSetting singleton; these are the static
+  // env-backed defaults it falls through to. See services/followupSettingsService.js.
+  followups: {
+    // IANA timezone that defines weekly (Mon 00:00) and monthly (1st 00:00)
+    // cycle boundaries and the period-key calculation. See periodService.js.
+    timezone: process.env.FOLLOWUPS_TZ || 'Asia/Karachi',
+
+    // Phone normalization default country calling code (digits, no +). Bare
+    // local numbers (e.g. 03001234567) are promoted to E.164 using this.
+    defaultCountryCode: process.env.FOLLOWUPS_DEFAULT_CC || '92', // Pakistan
+
+    // Active reminder channel: 'wa_link' (zero-setup click-to-send queue) or
+    // 'whatsapp_cloud' (Meta WhatsApp Business Cloud API). Overridable in the
+    // FollowupSetting singleton.
+    provider: process.env.REMINDER_PROVIDER || 'wa_link',
+
+    // Don't re-remind the same member within this many hours unless forced.
+    throttleHours: Number(process.env.FOLLOWUP_THROTTLE_HOURS) || 24,
+
+    // Kill switch for the scheduled auto-reminder job (manual "Remind" actions
+    // in the UI are never gated by this — only the cron is).
+    autoRemindersEnabled: process.env.FOLLOWUP_AUTO_REMINDERS === 'true',
+
+    // Scheduled auto-reminder run (local time, in `timezone`). Primary nudge,
+    // plus an optional second nudge. Blank disables that nudge.
+    schedule: {
+      primary: process.env.FOLLOWUP_SCHEDULE_PRIMARY || 'mon 10:00',
+      secondary: process.env.FOLLOWUP_SCHEDULE_SECONDARY || '', // e.g. 'thu 10:00'
+    },
+
+    // WhatsApp Business Cloud API — secrets/infra, env-ONLY (never in the
+    // FollowupSetting singleton or any API response).
+    whatsappCloud: {
+      token: process.env.WHATSAPP_TOKEN || '',
+      phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
+      templateName: process.env.WHATSAPP_TEMPLATE_NAME || '',
+      templateLang: process.env.WHATSAPP_TEMPLATE_LANG || 'en',
+      graphVersion: process.env.WHATSAPP_GRAPH_VERSION || 'v21.0',
+      // Inbound webhook (optional, behind this flag).
+      webhookEnabled: process.env.WHATSAPP_WEBHOOK_ENABLED === 'true',
+      verifyToken: process.env.WHATSAPP_VERIFY_TOKEN || '',
+      appSecret: process.env.WHATSAPP_APP_SECRET || '',
+    },
+  },
 }

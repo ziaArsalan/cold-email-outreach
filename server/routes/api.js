@@ -128,12 +128,20 @@ router.post('/unsubscribe', async (req, res) => {
   res.json({ success: true })
 })
 
+// ── Follow-ups inbound WhatsApp webhook (PUBLIC — Meta isn't logged in) ──────
+// Must stay ABOVE requireAuth, like the unsubscribe routes. Gated + signature-
+// verified inside the sub-router; self-404s when the webhook flag is off.
+router.use('/followups/webhooks/whatsapp', require('./followupsWebhook'))
+
 // All routes below this line require a valid token
 router.use(requireAuth)
 
 // Bid Analytics module (Upwork proposal funnel tracking) — its own sub-router,
 // inherits the requireAuth above.
 router.use('/bidding', require('./bidding'))
+
+// Follow-ups module (member task tracking + WhatsApp reminders) — authed.
+router.use('/followups', require('./followups'))
 
 // Global job state
 let jobState = {

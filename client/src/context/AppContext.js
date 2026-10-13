@@ -148,6 +148,10 @@ export function AppProvider({ children }) {
   const [newLaneName, setNewLaneName] = useState('')
   // Which Bid Analytics sub-view is active (internal tabs, one sidebar entry).
   const [bidTab, setBidTab] = useState('dashboard')
+  // Which Follow-ups sub-view is active (Members / Tasks / Reminders). The
+  // module's data is owned locally by each view (self-contained route module),
+  // so only this tab selector lives in shared context.
+  const [fuTab, setFuTab] = useState('members')
   const [analyticsRange, setAnalyticsRange] = useState({
     preset: 'Last 30 days',
     ...presetRange('Last 30 days'),
@@ -2429,6 +2433,8 @@ export function AppProvider({ children }) {
         deleteLane,
         // analytics / reports / connects / budgets / templates / import-export
         bidTab,
+        fuTab,
+        setFuTab,
         setBidTab,
         analyticsRange,
         changeAnalyticsRange,
