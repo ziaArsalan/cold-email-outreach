@@ -439,6 +439,18 @@ router.post('/reminders/:id/mark-sent', async (req, res) => {
   }
 })
 
+router.delete('/reminders/:id', async (req, res) => {
+  if (!dbReady()) return needDb(res)
+  try {
+    const log = await reminderService.remove(req.params.id)
+    if (!log) return notFound(res, 'Reminder')
+    res.json({ success: true })
+  } catch (err) {
+    if (isCast(err)) return notFound(res, 'Reminder')
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 router.get('/reminders/log', async (req, res) => {
   if (!dbReady()) return needDb(res)
   try {

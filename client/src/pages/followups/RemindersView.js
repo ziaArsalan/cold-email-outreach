@@ -69,6 +69,13 @@ export default function RemindersView() {
     await fetchLog()
   }
 
+  const removeReminder = async (logId) => {
+    if (!window.confirm('Delete this reminder entry?')) return
+    await axios.delete(`${API}/followups/reminders/${logId}`)
+    setQueue((q) => (q ? { ...q, items: q.items.filter((it) => it.logId !== logId) } : q))
+    await fetchLog()
+  }
+
   const saveSettings = async () => {
     setSettingsBusy(true)
     setSettingsMsg('')
@@ -168,6 +175,7 @@ export default function RemindersView() {
                       {it.link && !markedSent.has(it.logId) && (
                         <button className='btn-ghost' style={{ padding: '2px 8px' }} onClick={() => markSent(it)}>Mark sent</button>
                       )}
+                      <button className='btn-ghost' style={{ padding: '2px 8px' }} onClick={() => removeReminder(it.logId)}>Delete</button>
                     </td>
                   </tr>
                 ))}
@@ -226,7 +234,7 @@ export default function RemindersView() {
         ) : (
           <div className='table-wrapper' style={{ maxHeight: 360, overflowY: 'auto' }}>
             <table>
-              <thead><tr><th>Time</th><th>Member</th><th>Channel</th><th>Status</th><th>Covered</th></tr></thead>
+              <thead><tr><th>Time</th><th>Member</th><th>Channel</th><th>Status</th><th>Covered</th><th></th></tr></thead>
               <tbody>
                 {log.items.map((r) => (
                   <tr key={r._id}>
@@ -235,6 +243,7 @@ export default function RemindersView() {
                     <td>{r.channel}</td>
                     <td><span className={`status-badge badge-${r.status === 'sent' ? 'sent' : r.status === 'failed' ? 'failed' : 'pending'}`}>{r.status}</span></td>
                     <td>{(r.assignmentIds || []).length} task(s)</td>
+                    <td><button className='btn-ghost' style={{ padding: '2px 8px' }} onClick={() => removeReminder(r._id)}>Delete</button></td>
                   </tr>
                 ))}
               </tbody>

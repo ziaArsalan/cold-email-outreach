@@ -236,7 +236,7 @@ export default function TasksView() {
               </div>
             )}
             <div className='control-group'>
-              <label>Custom reminder (optional) — tokens: {'{{name}} {{period_label}} {{tasks}}'}</label>
+              <label>Custom reminder (optional) — tokens: <code style={{ textTransform: 'none' }}>{'{{name}} {{period_label}} {{tasks}}'}</code></label>
               <textarea rows={3} value={modal.form.reminderTemplate} onChange={(e) => setModal((s) => ({ ...s, form: { ...s.form, reminderTemplate: e.target.value } }))} placeholder='Leave blank to use the default reminder.' />
             </div>
             <button className='btn-start' disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save task'}</button>

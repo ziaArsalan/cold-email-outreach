@@ -35,9 +35,9 @@ const buildMessage = (member, pending, taskTemplateById) => {
     if (custom) tpl = custom
   }
   const text = tpl
-    .replace(/\{\{\s*name\s*\}\}/g, member.name || '')
-    .replace(/\{\{\s*period_label\s*\}\}/g, label)
-    .replace(/\{\{\s*tasks\s*\}\}/g, tasksText)
+    .replace(/\{\{\s*name\s*\}\}/gi, member.name || '')
+    .replace(/\{\{\s*period_label\s*\}\}/gi, label)
+    .replace(/\{\{\s*tasks\s*\}\}/gi, tasksText)
   return { text, params: { name: member.name || '', periodLabel: label, tasksText } }
 }
 
@@ -177,6 +177,10 @@ const markSent = async (logId) => {
   return log
 }
 
+// Remove a reminder log entry (e.g. a queue built by accident). Assignment
+// throttle stamps are left as-is; only the log row goes.
+const remove = async (logId) => ReminderLog.findByIdAndDelete(logId)
+
 const history = async ({ memberId, since, limit = 100, page = 1 } = {}) => {
   const filter = {}
   if (memberId) filter.member = memberId
@@ -197,4 +201,4 @@ const history = async ({ memberId, since, limit = 100, page = 1 } = {}) => {
   return { items, total, page: Math.max(1, page), pages: Math.max(1, Math.ceil(total / lim)) }
 }
 
-module.exports = { preview, send, markSent, history, buildMessage, DEFAULT_TEMPLATE }
+module.exports = { preview, send, markSent, remove, history, buildMessage, DEFAULT_TEMPLATE }

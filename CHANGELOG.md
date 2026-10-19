@@ -4,6 +4,11 @@ Worklog of completed tasks. The `/task` workflow appends an entry here when a ta
 
 ## [Unreleased]
 
+### 2026-10-19 — Follow-ups: case-insensitive reminder tokens + delete reminders
+- **Fixed:** custom reminder templates typed with uppercase tokens (`{{NAME}}`, `{{TASKS}}`) were sent unreplaced — the form label is CSS-uppercased, so users copied the tokens in caps. Token replacement is now case-insensitive, and the label shows the tokens in their real lowercase form.
+- **Added:** `DELETE /api/followups/reminders/:id` + a **Delete** button on send-queue rows and Reminder history rows (removes the log entry only; throttle stamps are untouched).
+- **Area:** both
+
 ### 2026-10-13 — Follow-ups module (member task tracking + WhatsApp reminders)
 - **Added:** a new **Follow-ups** sidebar entry (`/followups`) — track recurring member tasks and remind only the people who still have something pending. Unrelated to campaign follow-up email *sequences* despite the name. One sidebar entry hosts three sub-views: **Members, Tasks, Reminders**.
   - **Members (board):** each active member with their current-period task **tags** — pending tags are colored, done tags are grey/✓/strikethrough, skipped are dashed. Click a tag to mark done (click again to undo); Shift+click to skip. A summary bar (total members · members with pending · per-task completion e.g. "Weekly report 1/5"), filters (by task, has-pending / all-done, search name/phone/reg-ID), bulk select (mark a task done, remind, deactivate), add/edit/deactivate, and **CSV import** (`name, phone, registration_id`) with a duplicate-phone report.
