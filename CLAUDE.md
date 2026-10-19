@@ -9,6 +9,9 @@ npm run client     # client only  → http://localhost:3000
 npm run server     # server only  → http://localhost:5000
 ```
 
+## Deploy
+`sh scripts/deploy.sh` — after pushing to `main`: pulls on the server (146.190.112.221), installs server deps if changed, restarts pm2 `cold-email`. Client build is committed, so nothing builds on the server.
+
 ## Automated dev workflow
 Trigger with **`/task`**. It reads the backlog, plans, develops, QA-tests in a real browser, logs, and ships.
 → Full pipeline & command syntax: [.claude/docs/WORKFLOW.md](.claude/docs/WORKFLOW.md)
