@@ -23,17 +23,24 @@ const labelFor = (pending) => {
 }
 
 // Render the message text + the structured template params for one member.
-const buildMessage = (member, pending, taskTemplateById) => {
+// Template choice: the scoped task's custom template wins; otherwise a custom
+// template is used when the member's pending tasks carry exactly one distinct
+// one. Conflicting templates (or none) fall back to the default.
+const pickTemplate = (pending, taskTemplateById, scopedTaskId) => {
+  if (scopedTaskId) {
+    const scoped = taskTemplateById.get(String(scopedTaskId))
+    if (scoped) return scoped
+  }
+  const customs = [
+    ...new Set(pending.map((p) => taskTemplateById.get(String(p.taskId))).filter(Boolean)),
+  ]
+  return customs.length === 1 ? customs[0] : DEFAULT_TEMPLATE
+}
+
+const buildMessage = (member, pending, taskTemplateById, scopedTaskId) => {
   const tasksText = pending.map((p) => '• ' + p.title).join('\n')
   const label = labelFor(pending)
-  // Use a task's custom template only when it's the member's sole pending task;
-  // a multi-task message can't honor conflicting per-task templates, so it falls
-  // back to the default.
-  let tpl = DEFAULT_TEMPLATE
-  if (pending.length === 1) {
-    const custom = taskTemplateById.get(String(pending[0].taskId))
-    if (custom) tpl = custom
-  }
+  const tpl = pickTemplate(pending, taskTemplateById, scopedTaskId)
   const text = tpl
     .replace(/\{\{\s*name\s*\}\}/gi, member.name || '')
     .replace(/\{\{\s*period_label\s*\}\}/gi, label)
@@ -90,7 +97,10 @@ const preview = async ({ scope, force } = {}) => {
   const now = new Date()
   const { kept, throttled } = await resolveRecipients({ scope, now, force })
   const taskTemplates = await loadTaskTemplates()
-  const sample = kept.length ? buildMessage(kept[0].member, kept[0].pending, taskTemplates).text : null
+  const scopedTaskId = scope && scope.type === 'task' ? scope.taskId : null
+  const sample = kept.length
+    ? buildMessage(kept[0].member, kept[0].pending, taskTemplates, scopedTaskId).text
+    : null
   return {
     provider: settings.get().provider,
     recipientCount: kept.length,
@@ -115,10 +125,12 @@ const send = async ({ scope, force, triggeredBy } = {}) => {
   const { kept, throttled } = await resolveRecipients({ scope, now, force })
   const taskTemplates = await loadTaskTemplates()
 
+  const scopedTaskId = scope && scope.type === 'task' ? scope.taskId : null
+
   const out = { provider: s.provider, sent: 0, queued: 0, failed: 0, throttled: throttled.length, items: [] }
 
   for (const g of kept) {
-    const message = buildMessage(g.member, g.pending, taskTemplates)
+    const message = buildMessage(g.member, g.pending, taskTemplates, scopedTaskId)
     const assignmentIds = g.pending.map((p) => p.assignmentId)
     let result
     try {
